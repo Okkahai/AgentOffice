@@ -9,6 +9,7 @@ export type EventType =
   | 'verification.started' | 'verification.passed' | 'verification.failed'
   | 'review.started' | 'review.completed'
   | 'merge.success' | 'merge.verification_failed'
+  | 'plan.created'
   | 'message.sent' | 'system.recovered';
 
 export interface AgentOfficeEvent {
