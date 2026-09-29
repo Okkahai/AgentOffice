@@ -1,5 +1,6 @@
 // Canvas pixel office. Pure view: draws whatever the reducer state says, nothing else.
 // Logical 320x180 units drawn onto a 3x canvas: pixel-art rectangles stay sharp, text stays crisp.
+import { drawSprite } from './sprites.js';
 
 const W = 320, H = 180;
 const C = {
@@ -56,11 +57,10 @@ export class Office {
     g.fillStyle = '#3a3f4a'; g.fillRect(x + 8, y - 6, 12, 9);
     g.fillStyle = active ? (Math.floor(t / 250) % 2 ? '#3b7f57' : '#5fd38d') : tint; g.fillRect(x + 9, y - 5, 10, 7);
   }
-  person(x, y, color, state, t) {
+  person(x, y, color, state, t, role = "ENGINEER") {
     const g = this.ctx;
     const bob = state === 'coding' || state === 'testing' || state === 'reviewing' ? (Math.floor(t / 180) % 2) : 0;
-    g.fillStyle = C.skin; g.fillRect(x + 2, y, 6, 6);
-    g.fillStyle = color; g.fillRect(x + 1, y + 6, 8, 7);
+    drawSprite(g, x, y, role, state, state === 'failed' ? color : undefined);
     g.fillStyle = C.skin; g.fillRect(x - 1, y + 8 - bob, 2, 3); g.fillRect(x + 9, y + 8 + bob, 2, 3);
     g.fillStyle = '#20242c'; g.fillRect(x + 2, y + 13, 2, 3); g.fillRect(x + 6, y + 13, 2, 3);
     if (state === 'failed') { g.fillStyle = C.red; g.fillRect(x + 4, y - 9, 2, 5); g.fillRect(x + 4, y - 3, 2, 2); }
@@ -77,7 +77,7 @@ export class Office {
   managerRoom(s, t) {
     const a = s.agents.manager;
     this.desk(30, 40, a.state === 'planning', t);
-    this.person(37, 24, C.violet, a.state, t); this.label(a, 30, 76);
+    this.person(37, 24, C.violet, a.state, t, "MANAGER"); this.label(a, 30, 76);
     this.bubble('manager', 12, 14, Date.now());
   }
   engineering(s, t, now) {
@@ -97,7 +97,7 @@ export class Office {
     const a = s.agents['qa-reviewer'];
     const busy = a.state === 'testing' || a.state === 'reviewing';
     this.desk(262, 40, busy, t, busy ? C.amber : C.screen);
-    this.person(269, 24, C.green, a.state, t);
+    this.person(269, 24, C.green, a.state, t, "QA");
     this.label({ id: `qa ${a.state}` }, 246, 76);
     this.bubble('qa-reviewer', 244, 14, Date.now());
   }
