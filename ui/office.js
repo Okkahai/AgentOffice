@@ -15,6 +15,9 @@ const ROOMS = {
   server: { x: 6, y: 92, w: 190, h: 82, label: 'SERVER ROOM' },
   release: { x: 202, y: 92, w: 112, h: 82, label: 'RELEASE' },
 };
+const IMG = {};
+for (const n of ['desk-pc', 'rack', 'plant', 'shelf', 'frame', 'cabinet', 'floor-eng', 'floor-mgr', 'floor-qa', 'floor-srv']) { const i = new Image(); i.src = `/assets/furniture-${n}.png`; IMG[n] = i; }
+const FLOOR = { manager: 'floor-mgr', engineering: 'floor-eng', qa: 'floor-qa', server: 'floor-srv', release: 'floor-eng' };
 const DESKS = [ [112, 40], [172, 40], [112, 64], [172, 64] ]; // engineering desk slots
 
 export class Office {
@@ -37,25 +40,35 @@ export class Office {
     for (const [k, r] of Object.entries(ROOMS)) this.room(k, r);
     if (!this.state) return;
     const s = this.state, now = Date.now();
+    this.decor();
     this.managerRoom(s, t); this.engineering(s, t, now); this.qaRoom(s, t); this.serverRoom(s, t, now); this.release(s);
   }
 
-  room(_k, r) {
-    const g = this.ctx;
+  room(k, r) {
+    const g = this.ctx, tile = IMG[FLOOR[k]];
     g.fillStyle = C.wall; g.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
-    for (let y = 0; y < r.h; y += 8) for (let x = 0; x < r.w; x += 8) {
-      g.fillStyle = ((x + y) / 8) % 2 ? C.floor : C.floor2; g.fillRect(r.x + x, r.y + y, 8, 8);
+    g.save(); g.beginPath(); g.rect(r.x, r.y, r.w, r.h); g.clip();
+    for (let y = 0; y < r.h; y += 14) for (let x = 0; x < r.w; x += 17) {
+      if (tile?.complete && tile.naturalWidth) g.drawImage(tile, r.x + x, r.y + y, 17, 14);
+      else { g.fillStyle = ((x + y) / 8) % 2 ? C.floor : C.floor2; g.fillRect(r.x + x, r.y + y, 8, 8); }
     }
+    g.fillStyle = 'rgba(8,10,14,0.2)'; g.fillRect(r.x, r.y, r.w, r.h); // keep the room moody so sprites read on top
+    g.restore();
     this.text(r.label, r.x + 3, r.y + 8, '#8a94a6', 6);
   }
   text(str, x, y, color = C.ink, size = 7) {
     const g = this.ctx; g.font = `bold ${size}px monospace`; g.fillStyle = color; g.fillText(str, Math.round(x), Math.round(y));
   }
+  sprite(name, x, y, w, h) {
+    const i = IMG[name]; if (i?.complete && i.naturalWidth) this.ctx.drawImage(i, x, y, w, h);
+  }
   desk(x, y, active, t, tint = C.screen) {
-    const g = this.ctx;
-    g.fillStyle = C.desk; g.fillRect(x, y + 6, 26, 10); g.fillStyle = C.deskTop; g.fillRect(x, y + 4, 26, 4);
-    g.fillStyle = '#3a3f4a'; g.fillRect(x + 8, y - 6, 12, 9);
-    g.fillStyle = active ? (Math.floor(t / 250) % 2 ? '#3b7f57' : '#5fd38d') : tint; g.fillRect(x + 9, y - 5, 10, 7);
+    const g = this.ctx, i = IMG['desk-pc'];
+    if (!(i?.complete && i.naturalWidth)) { g.fillStyle = C.desk; g.fillRect(x, y + 6, 26, 10); return; }
+    g.drawImage(i, x - 5, y - 10, 34, 28);
+    // screen glow is event-driven: dark when idle, flickers only while the agent is really working
+    g.fillStyle = active ? (Math.floor(t / 250) % 2 ? 'rgba(95,211,141,0)' : 'rgba(95,211,141,0.25)') : (tint === C.screen ? 'rgba(10,12,16,0.85)' : 'rgba(232,168,56,0.45)');
+    g.fillRect(x + 4, y - 9, 16, 8);
   }
   person(x, y, color, state, t, role = "ENGINEER", opts = {}) {
     const g = this.ctx;
@@ -74,33 +87,37 @@ export class Office {
   }
   label(a, x, y) { this.text(a.id.replace('qa-reviewer', 'qa'), x, y, '#b6bfce', 6); }
 
+  decor() {
+    this.sprite('shelf', 10, 16, 34, 29); this.sprite('frame', 52, 12, 18, 16); this.sprite('plant', 76, 56, 16, 24);
+    this.sprite('plant', 108, 14, 14, 21); this.sprite('cabinet', 296, 14, 16, 20); this.sprite('plant', 242, 60, 14, 21);
+  }
   managerRoom(s, t) {
     const a = s.agents.manager;
-    this.desk(30, 40, a.state === 'planning', t);
-    this.person(37, 24, C.violet, a.state, t, "MANAGER"); this.label(a, 30, 76);
+    this.person(37, 14, C.violet, a.state, t, "MANAGER");
+    this.desk(30, 40, a.state === 'planning', t); this.label(a, 30, 76);
     this.bubble('manager', 12, 14, Date.now());
   }
   engineering(s, t, now) {
     const eng = Object.values(s.agents).filter((a) => a.role === 'ENGINEER').sort((x, y) => x.taskId - y.taskId);
     DESKS.forEach(([x, y], i) => {
       const a = eng[i];
-      this.desk(x, y, a?.state === 'coding', t);
       if (a) {
         // Walk in from the door only for a fresh assignment event; replayed history just sits at the desk.
         const age = a.assignedAt ? now - Date.parse(a.assignedAt) : Infinity, WALK_MS = 1200;
         const walking = age >= 0 && age < WALK_MS, dx = walking ? Math.round((1 - age / WALK_MS) * -(x - 106)) : 0;
-        this.person(x + 7 + dx, y - 16, a.state === 'failed' ? '#8a4b4b' : C.blue, a.state, t, 'ENGINEER', { variant: (a.taskId ?? i) - 1, walk: walking ? Math.floor(t / 150) % 2 : undefined });
+        this.person(x + 7 + dx, y - 26, a.state === 'failed' ? '#8a4b4b' : C.blue, a.state, t, 'ENGINEER', { variant: (a.taskId ?? i) - 1, walk: walking ? Math.floor(t / 150) % 2 : undefined });
+        this.desk(x, y, a.state === 'coding', t);
         this.label({ id: `eng ${a.taskId}` }, x + 30, y + 2);
         this.bubble(a.id, x - 2, y - 30, now);
-      }
+      } else this.desk(x, y, false, t);
     });
     if (eng.length > DESKS.length) this.text(`+${eng.length - DESKS.length} more`, 176, 82, C.amber);
   }
   qaRoom(s, t) {
     const a = s.agents['qa-reviewer'];
     const busy = a.state === 'testing' || a.state === 'reviewing';
+    this.person(269, 14, C.green, a.state, t, "QA");
     this.desk(262, 40, busy, t, busy ? C.amber : C.screen);
-    this.person(269, 24, C.green, a.state, t, "QA");
     this.label({ id: `qa ${a.state}` }, 246, 76);
     this.bubble('qa-reviewer', 244, 14, Date.now());
   }
@@ -108,11 +125,10 @@ export class Office {
     const g = this.ctx, sv = s.server;
     const racks = [ ['BACKUP', 14], ['MAIN', 62], ['CHECKS', 110] ];
     racks.forEach(([name, x]) => {
-      g.fillStyle = C.rack; g.fillRect(x, 106, 40, 56);
-      for (let i = 0; i < 6; i++) { g.fillStyle = '#12151b'; g.fillRect(x + 3, 109 + i * 8, 34, 6); }
+      this.sprite('rack', x + 4, 106, 31, 55);
       this.text(name, x + 4, 170, C.dim, 6);
     });
-    const led = (x, row, on, col) => { g.fillStyle = on ? col : '#2f3540'; g.fillRect(x + 31, 111 + row * 8, 3, 3); };
+    const led = (x, row, on, col) => { g.fillStyle = on ? col : '#2f3540'; g.fillRect(x + 36, 111 + row * 8, 3, 3); };
     const backupFresh = sv.backupAt && now - Date.parse(sv.backupAt) < 4000;
     led(14, 0, backupFresh || (sv.backupAt != null), backupFresh ? C.green : C.dim);
     led(62, 0, sv.merging, C.amber);
