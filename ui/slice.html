@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Office</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/vendor/xterm.css">
+<link rel="stylesheet" href="/slice.css">
+</head>
+<body>
+<canvas id="world" aria-label="Agent Office world"></canvas>
+
+<header class="hud" aria-label="Status">
+  <div class="brand">AGENT OFFICE</div>
+  <div class="stat" id="repo">connecting</div>
+  <div class="stat" id="agents">0 agents</div>
+  <div class="stat" id="tasks">0 tasks</div>
+  <div class="stat live" id="live">offline</div>
+</header>
+
+<div class="controls" role="toolbar" aria-label="Camera">
+  <button id="fit" title="Fit office (F)">Fit office</button>
+  <button id="zin" title="Zoom in (+)" aria-label="Zoom in">+</button>
+  <button id="zout" title="Zoom out (-)" aria-label="Zoom out">-</button>
+</div>
+<p class="keys">Drag to pan, wheel to zoom, WASD or arrows to move, click an agent to inspect</p>
+
+<aside class="drawer inspector" id="inspector" hidden aria-label="Agent inspector"></aside>
+<section class="drawer terminal" id="terminal" hidden aria-label="Terminal">
+  <div class="bar"><span id="term-title">Terminal</span><button id="term-close" aria-label="Close terminal">Close</button></div>
+  <div id="term"></div>
+</section>
+
+<script src="/vendor/xterm.js"></script>
+<script type="module" src="/slice.js"></script>
+</body>
+</html>

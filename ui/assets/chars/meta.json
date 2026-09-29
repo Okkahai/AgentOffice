@@ -1,0 +1,58 @@
+{
+  "frame": {
+    "w": 32,
+    "h": 48,
+    "anchor": {
+      "x": 16,
+      "y": 45
+    }
+  },
+  "cols": 4,
+  "rows": {
+    "idle": {
+      "row": 0,
+      "frames": 2,
+      "fps": 2
+    },
+    "walk_down": {
+      "row": 1,
+      "frames": 4,
+      "fps": 8
+    },
+    "walk_up": {
+      "row": 2,
+      "frames": 4,
+      "fps": 8
+    },
+    "walk_side": {
+      "row": 3,
+      "frames": 4,
+      "fps": 8
+    },
+    "type": {
+      "row": 4,
+      "frames": 2,
+      "fps": 6
+    },
+    "think": {
+      "row": 5,
+      "frames": 2,
+      "fps": 2
+    },
+    "talk": {
+      "row": 6,
+      "frames": 2,
+      "fps": 4
+    },
+    "success": {
+      "row": 7,
+      "frames": 2,
+      "fps": 4
+    },
+    "failure": {
+      "row": 8,
+      "frames": 2,
+      "fps": 4
+    }
+  }
+}

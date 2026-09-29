@@ -83,7 +83,16 @@ export async function startUiServer(opts: UiServerOptions) {
     json(res, { ok: true });
   }
 
+  const VENDOR: Record<string, [string, string]> = {
+    '/vendor/xterm.js': ['@xterm/xterm/lib/xterm.js', 'text/javascript; charset=utf-8'],
+    '/vendor/xterm.css': ['@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8'],
+  };
+
   async function serveStatic(res: http.ServerResponse, pathname: string) {
+    const vendor = VENDOR[pathname];
+    if (vendor) { // fixed allowlist, so no path traversal is possible
+      try { return void res.writeHead(200, { 'content-type': vendor[1] }).end(await readFile(path.resolve(uiDir, '../node_modules', vendor[0]))); } catch { return void res.writeHead(404).end(); }
+    }
     const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
     let file: string;
     try { file = assertInside(uiDir, path.join(uiDir, rel)); } catch { return void res.writeHead(404).end(); }

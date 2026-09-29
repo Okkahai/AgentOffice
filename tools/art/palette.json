@@ -1,0 +1,15 @@
+{
+  "ink0": "#0d0b0a", "ink1": "#16110f", "ink2": "#211a16", "ink3": "#2f241d",
+  "wood0": "#3d2b1f", "wood1": "#55392a", "wood2": "#6f4a33", "wood3": "#8a5f3f", "wood4": "#a87a50",
+  "brick0": "#2a1d18", "brick1": "#3b2a22", "brick2": "#4d362b",
+  "stone0": "#1c1a1f", "stone1": "#26232b", "stone2": "#33303a", "stone3": "#423e4a",
+  "blue0": "#1d2740", "blue1": "#2c3d63", "blue2": "#4a6a9c",
+  "green0": "#1f3a2c", "green1": "#35603f", "green2": "#5f9a55",
+  "skin0": "#6d4634", "skin1": "#9a6446", "skin2": "#c58b62", "skin3": "#e6b98c",
+  "purple0": "#3c2a4a", "purple1": "#5e3f7a",
+  "teal0": "#22403d", "teal1": "#2e5a55",
+  "amber0": "#a8501e", "amber1": "#d97a2b", "amber2": "#f2b451",
+  "red0": "#7a2a2a", "red1": "#c04a3f",
+  "paper0": "#d9ccb0", "paper1": "#f1e7d0",
+  "steel0": "#3a3d45", "steel1": "#5a5e69", "steel2": "#8a8f9c"
+}
