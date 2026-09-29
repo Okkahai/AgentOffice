@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Office</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="logo" aria-hidden="true"></span>AGENT OFFICE</div>
+  <div class="meta" id="meta">connecting…</div>
+  <div class="live" id="live" title="event stream"><i></i><span>offline</span></div>
+</header>
+<main class="layout">
+  <section class="stage" aria-label="Office">
+    <canvas id="office" width="960" height="540"></canvas>
+    <p class="hint">Every animation is driven by a real system event. If nothing is happening, nothing moves.</p>
+  </section>
+  <section class="panel" aria-label="Details">
+    <nav class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="tasks" aria-selected="true">Tasks</button>
+      <button role="tab" data-tab="terminal">Terminal</button>
+      <button role="tab" data-tab="events">Event log</button>
+      <button role="tab" data-tab="merges">Merges</button>
+      <button role="tab" data-tab="backups">Backups</button>
+    </nav>
+    <div class="view" id="view"></div>
+  </section>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

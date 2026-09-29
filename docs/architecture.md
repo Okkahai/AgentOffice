@@ -70,6 +70,18 @@ Typed `EventType` union in `events.ts` (a subset of the brief's list is implemen
 
 `spawn(req) → AgentHandle { getStatus, sendInput, interrupt, terminate, subscribeOutput, exited }`. `CommandProvider`/`PtyProvider` run any argv. `src/agents/cliAgents.ts` is the only place that knows Claude Code / Codex / OpenCode: PATH detection (no shell) and one-shot argv builders. The unattended flags (`--permission-mode acceptEdits`, `--full-auto`) are a security decision to revisit before real runs; not exercised by tests. Tests use a scripted fake agent (`test/fixtures/fake-agent.mjs`), a real OS process, so CI needs no AI CLI or keys.
 
+## Manager
+
+`src/manager/plan.ts`: the Manager (Claude Code in read-only plan mode, `ClaudePlanner`) proposes JSON. `validatePlan` is the deterministic gate: bounded task count (smallest useful team), unique kebab-case keys, known dependencies, no cycles. Only a validated plan reaches `Orchestrator.createTask`. An invalid proposal creates no tasks.
+
+## Office UI (implemented as a local web UI first)
+
+`src/server/server.ts` serves `ui/` and streams the persisted event trail plus live events over SSE. It binds `127.0.0.1`, rejects foreign `Host` headers (DNS rebinding), sends no CORS headers, and protects the only mutations (cancel task, roll back merge) with a per-run token. Actions call `Orchestrator` methods, so the UI cannot bypass the state machine.
+
+`ui/office-state.js` is a pure reducer from events to scene state (tested in Node). `ui/office.js` draws it on a canvas. Nothing animates without an event: engineers appear on `task.assigned`, type only between `agent.coding` and `agent.completed`, QA is busy while any test or review job is open, the server room lights come from backup/merge/verify events. Canvas 2D is used instead of PixiJS: the scene is a few hundred rectangles, so a rendering library adds a dependency without benefit; PixiJS can replace `office.js` without touching the reducer.
+
+Electron is deliberately last: it only wraps this UI (main process owns the orchestrator, preload exposes the fixed API below) and `node-pty` needs a native rebuild against Electron.
+
 ## Electron IPC boundary (design, not built)
 
 - Main process owns Orchestrator, Store, GitService, providers. Renderer has `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
