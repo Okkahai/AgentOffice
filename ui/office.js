@@ -3,10 +3,6 @@
 // Idle strolling is ambient decoration and never implies work.
 import { drawChar, CHAR_H } from './sprites.js';
 
-const ENTRY = [172, 168];                 // agents come in from the lobby door
-const LOBBY = [[146, 110], [166, 122], [186, 108], [154, 138], [176, 142], [196, 126]]; // open floor where free agents stand
-const SPEED = 46;                          // px/s; movement happens only after a real state change
-
 const W = 320, H = 180;
 const C = { ink: '#d9dee7', dim: '#6b6558', amber: '#e8a838', green: '#5fd38d', red: '#ef6461', violet: '#b48ead' };
 const IMG = {};
