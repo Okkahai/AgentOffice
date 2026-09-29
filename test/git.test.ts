@@ -36,8 +36,12 @@ describe('git control plane', () => {
     assert.throws(() => assertSafeId('../evil'));
     assert.throws(() => assertSafeId('a b; rm -rf /'));
     assert.throws(() => assertInside(sb.worktrees, path.join(sb.worktrees, '..', 'repo')));
-    symlinkSync(sb.repo, path.join(sb.base, 'link'));
-    assert.throws(() => assertInside(sb.worktrees, path.join(sb.base, 'link')));
+    try {
+      symlinkSync(sb.repo, path.join(sb.base, 'link'), 'junction');
+      assert.throws(() => assertInside(sb.worktrees, path.join(sb.base, 'link')));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EPERM') throw e; // symlinks need privileges on some Windows setups
+    }
     await assert.rejects(svc.removeWorktree(sb.repo), /outside allowed root/);
     await assert.rejects(svc.createWorktree({ taskId: -1, title: 'x', baseRef: 'main' }));
     assert.throws(() => new GitService({ repoRoot: sb.repo, worktreesDir: path.join(sb.repo, 'wt') }), /outside the repository/);

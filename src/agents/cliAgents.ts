@@ -31,9 +31,12 @@ export const CLI_SPECS: Record<CliKind, CliSpec> = {
 
 /** PATH lookup without spawning a shell. */
 export function findOnPath(bin: string, pathVar = process.env.PATH ?? ''): string | null {
+  const exts = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD').split(';').concat('') : [''];
   for (const dir of pathVar.split(path.delimiter).filter(Boolean)) {
-    const p = path.join(dir, bin);
-    try { accessSync(p, constants.X_OK); return p; } catch { /* next */ }
+    for (const ext of exts) {
+      const p = path.join(dir, bin + ext);
+      try { accessSync(p, constants.X_OK); return p; } catch { /* next */ }
+    }
   }
   return null;
 }
