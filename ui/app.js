@@ -1,5 +1,6 @@
 import { initialOffice, reduce } from './office-state.js';
 import { Office } from './office.js';
+import { portraitURL } from './sprites.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -63,13 +64,10 @@ function tasksView() {
     <td>${x.dependsOn.length ? x.dependsOn.map((d) => '#' + d).join(' ') : '—'}</td>
     <td>${ACTIVE.includes(x.status) ? `<button class="act danger" onclick="ao.cancel(${x.id})">Cancel</button>` : ''}</td></tr>`).join('')}</table>`;
 }
-const ROLE = { MANAGER: 'manager', ENGINEER: 'engineer', QA: 'qa' };
-// Expression comes from real agent state only (same mapping the office sprites use).
-const expr = (a) => a.state === 'failed' ? 'alarm' : ['coding', 'testing', 'reviewing', 'planning'].includes(a.state) ? 'focus' : /approved|done|merged|passed/i.test(scene.bubbles[a.id]?.text ?? '') ? 'smile' : 'neutral';
 function agentsView() {
   const list = Object.values(scene.agents);
   return `<div class="cards">${list.map((a) => `<figure class="card ${a.state === 'failed' ? 'bad' : ''}">
-    <img src="/assets/${ROLE[a.role] ?? 'engineer'}-${expr(a)}.png" alt="${esc(a.id)}" width="100" height="96">
+    <img src="${portraitURL(a.role, a.state, a.role === 'ENGINEER' ? (a.taskId ?? 1) - 1 : undefined)}" alt="${esc(a.id)}">
     <figcaption><b>${esc(a.id)}</b><br>${esc(a.role)} · ${esc(a.state)}${a.taskId != null ? `<br>task #${a.taskId}` : ''}${scene.bubbles[a.id]?.text ? `<q>${esc(scene.bubbles[a.id].text)}</q>` : ''}</figcaption></figure>`).join('')}</div>`;
 }
 let termScroll = true;

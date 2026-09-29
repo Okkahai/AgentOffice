@@ -2,6 +2,10 @@
 // Logical 320x180 units drawn onto a 3x canvas: pixel-art rectangles stay sharp, text stays crisp.
 import { drawSprite } from './sprites.js';
 
+const ENTRY = [172, 168];                 // agents come in from the lobby door
+const LOBBY = [[146, 110], [166, 122], [186, 108], [154, 138], [176, 142], [196, 126]]; // open floor where free agents stand
+const SPEED = 46;                          // px/s; movement happens only after a real state change
+
 const W = 320, H = 180;
 const C = {
   floor: '#1c2028', floor2: '#181c23', wall: '#2b313b', ink: '#d9dee7', dim: '#5b6474', amber: '#e8a838',
@@ -27,6 +31,7 @@ export class Office {
     this.scale = canvas.width / W;
     this.state = null;
     this.raf = null;
+    this.pos = {}; this.lastT = 0;
   }
   setState(s) { this.state = s; }
   start() {
@@ -37,13 +42,32 @@ export class Office {
     const g = this.ctx;
     g.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     g.fillStyle = '#0e1014'; g.fillRect(0, 0, W, H);
-    for (const [k, r] of Object.entries(ROOMS)) this.room(k, r);
+    this.floor();
     if (!this.state) return;
-    const s = this.state, now = Date.now();
+    const s = this.state, now = Date.now(), dt = Math.min(0.1, (t - this.lastT) / 1000 || 0); this.lastT = t;
+    this.roamers = [];
     this.decor();
-    this.managerRoom(s, t); this.engineering(s, t, now); this.qaRoom(s, t); this.serverRoom(s, t, now); this.release(s);
+    this.managerRoom(s, t, dt); this.engineering(s, t, now, dt); this.qaRoom(s, t, dt); this.serverRoom(s, t, now); this.release(s);
+    // people who are up and walking are drawn last, sorted by depth, so they pass in front of furniture
+    this.roamers.sort((a, b) => a.y - b.y).forEach((r) => r.draw());
   }
 
+  floor() {
+    const g = this.ctx, tile = IMG['floor-eng'];
+    for (let y = 0; y < H; y += 14) for (let x = 0; x < W; x += 17) {
+      if (tile?.complete && tile.naturalWidth) g.drawImage(tile, x, y, 17, 14);
+      else { g.fillStyle = ((x + y) / 8) % 2 ? C.floor : C.floor2; g.fillRect(x, y, 8, 8); }
+    }
+    g.fillStyle = 'rgba(8,10,14,0.35)'; g.fillRect(0, 0, W, H);
+    // zone rugs on one shared floor (no walls): the office is an open space
+    const rug = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    rug(4, 6, 96, 78, 'rgba(122,60,80,0.35)');     // manager
+    rug(240, 6, 76, 78, 'rgba(70,120,80,0.30)');   // qa
+    rug(6, 92, 136, 82, 'rgba(60,66,80,0.35)');    // servers
+    rug(206, 92, 108, 82, 'rgba(50,60,90,0.30)');  // release
+    rug(142, 96, 66, 78, 'rgba(232,168,56,0.10)'); // lobby
+    for (const [t, x, y] of [['MANAGER', 8, 12], ['ENGINEERING', 112, 12], ['QA', 244, 12], ['SERVERS', 10, 98], ['LOBBY', 152, 102], ['RELEASE', 210, 98]]) this.text(t, x, y, '#6f7a8c', 6);
+  }
   room(k, r) {
     const g = this.ctx, tile = IMG[FLOOR[k]];
     g.fillStyle = C.wall; g.fillRect(r.x - 1, r.y - 1, r.w + 2, r.h + 2);
@@ -91,35 +115,50 @@ export class Office {
     this.sprite('shelf', 10, 16, 34, 29); this.sprite('frame', 52, 12, 18, 16); this.sprite('plant', 76, 56, 16, 24);
     this.sprite('plant', 108, 14, 14, 21); this.sprite('cabinet', 296, 14, 16, 20); this.sprite('plant', 242, 60, 14, 21);
   }
-  managerRoom(s, t) {
-    const a = s.agents.manager;
-    this.person(37, 14, C.violet, a.state, t, "MANAGER");
-    this.desk(30, 40, a.state === 'planning', t); this.label(a, 30, 76);
-    this.bubble('manager', 12, 14, Date.now());
+  // Where an agent should be is decided by its (event-driven) state; only the walking between places is animated.
+  // Agents at their desk are drawn with the desk; agents in transit or in the lobby are drawn in the depth-sorted pass.
+  move(a, seat, slot, t, dt, opts, spawn) {
+    const tgt = seat ?? LOBBY[slot % LOBBY.length];
+    let p = this.pos[a.id];
+    if (!p) p = this.pos[a.id] = { x: (spawn ?? tgt)[0], y: (spawn ?? tgt)[1] };
+    const dx = tgt[0] - p.x, dy = tgt[1] - p.y, d = Math.hypot(dx, dy), step = SPEED * dt;
+    const moving = d > 0.5;
+    if (moving) { const k = Math.min(1, step / d); p.x += dx * k; p.y += dy * k; }
+    const atSeat = seat && !moving;
+    return { x: Math.round(p.x), y: Math.round(p.y), atSeat, o: { ...opts, walk: moving ? Math.floor(t / 150) % 2 : undefined } };
   }
-  engineering(s, t, now) {
+  actor(a, m, color, t, role, now) {
+    const draw = () => { this.person(m.x, m.y, color, a.state, t, role, m.o); this.bubble(a.id, m.x - 8, m.y - 16, now); };
+    if (m.atSeat) draw(); else this.roamers.push({ y: m.y, draw });
+  }
+  managerRoom(s, t, dt) {
+    const a = s.agents.manager, now = Date.now();
+    const m = this.move(a, a.state === 'planning' ? [37, 14] : null, 0, t, dt, {});
+    this.actor(a, m, C.violet, t, 'MANAGER', now);
+    this.desk(30, 40, a.state === 'planning', t); this.label(a, 30, 76);
+  }
+  engineering(s, t, now, dt) {
     const eng = Object.values(s.agents).filter((a) => a.role === 'ENGINEER').sort((x, y) => x.taskId - y.taskId);
     DESKS.forEach(([x, y], i) => {
       const a = eng[i];
       if (a) {
-        // Walk in from the door only for a fresh assignment event; replayed history just sits at the desk.
-        const age = a.assignedAt ? now - Date.parse(a.assignedAt) : Infinity, WALK_MS = 1200;
-        const walking = age >= 0 && age < WALK_MS, dx = walking ? Math.round((1 - age / WALK_MS) * -(x - 106)) : 0;
-        this.person(x + 7 + dx, y - 26, a.state === 'failed' ? '#8a4b4b' : C.blue, a.state, t, 'ENGINEER', { variant: (a.taskId ?? i) - 1, walk: walking ? Math.floor(t / 150) % 2 : undefined });
+        const fresh = a.assignedAt && now - Date.parse(a.assignedAt) < 3000; // walk in only for a fresh assignment event
+        const seat = a.done ? null : [x + 7, y - 26];
+        const m = this.move(a, seat, 1 + i, t, dt, { variant: (a.taskId ?? i) - 1 }, fresh ? ENTRY : null);
+        this.actor(a, m, a.state === 'failed' ? '#8a4b4b' : C.blue, t, 'ENGINEER', now);
         this.desk(x, y, a.state === 'coding', t);
         this.label({ id: `eng ${a.taskId}` }, x + 30, y + 2);
-        this.bubble(a.id, x - 2, y - 30, now);
       } else this.desk(x, y, false, t);
     });
     if (eng.length > DESKS.length) this.text(`+${eng.length - DESKS.length} more`, 176, 82, C.amber);
   }
-  qaRoom(s, t) {
-    const a = s.agents['qa-reviewer'];
+  qaRoom(s, t, dt) {
+    const a = s.agents['qa-reviewer'], now = Date.now();
     const busy = a.state === 'testing' || a.state === 'reviewing';
-    this.person(269, 14, C.green, a.state, t, "QA");
+    const m = this.move(a, busy ? [269, 14] : null, 5, t, dt, {});
+    this.actor(a, m, C.green, t, 'QA', now);
     this.desk(262, 40, busy, t, busy ? C.amber : C.screen);
     this.label({ id: `qa ${a.state}` }, 246, 76);
-    this.bubble('qa-reviewer', 244, 14, Date.now());
   }
   serverRoom(s, t, now) {
     const g = this.ctx, sv = s.server;

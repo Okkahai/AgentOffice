@@ -34,3 +34,10 @@ export function drawSprite(g, x, y, role, state, override, opts = {}) {
     g.fillRect(x + i, y + j, 1, 1);
   }));
 }
+
+/** Head-and-shoulders crop of the same world sprite, as a data URL. Panels show the exact character seen in the office. */
+export function portraitURL(role, state, variant) {
+  const c = document.createElement('canvas'); c.width = 10; c.height = 11;
+  drawSprite(c.getContext('2d'), 0, 0, role, state, undefined, { variant });
+  return c.toDataURL();
+}
