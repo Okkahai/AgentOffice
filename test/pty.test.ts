@@ -4,14 +4,22 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { buildAgentArgv, detectClis } from '../src/agents/cliAgents.ts';
-import { PtyProvider } from '../src/agents/ptyProvider.ts';
 import { FAKE_AGENT } from './helpers.ts';
 
 const node = process.execPath;
 
-describe('PTY provider (real pseudo-terminal)', () => {
+// node-pty is a native module; skip (don't hang) when it isn't built on this machine.
+let PtyProvider: typeof import('../src/agents/ptyProvider.ts').PtyProvider | undefined;
+try {
+  PtyProvider = (await import('../src/agents/ptyProvider.ts')).PtyProvider;
+  const probe = new PtyProvider!().spawn({ agentId: 'probe', argv: [node, '-e', '0'], cwd: process.cwd() });
+  await probe.exited;
+} catch { PtyProvider = undefined; }
+
+
+describe('PTY provider (real pseudo-terminal)', { skip: !PtyProvider && 'node-pty not available' }, () => {
   it('streams output, accepts input, reports exit', async () => {
-    const h = new PtyProvider().spawn({ agentId: 'p', argv: [node, '-e', "process.stdin.once('data',d=>{console.log('got:'+d.toString().trim());process.exit(0)});console.log('ready')"], cwd: process.cwd() });
+    const h = new PtyProvider!().spawn({ agentId: 'p', argv: [node, '-e', "process.stdin.once('data',d=>{console.log('got:'+d.toString().trim());process.exit(0)});console.log('ready')"], cwd: process.cwd() });
     let out = '';
     h.subscribeOutput((c) => { out += c; if (out.includes('ready')) h.sendInput('ping\n'); });
     const exit = await h.exited;
@@ -20,7 +28,7 @@ describe('PTY provider (real pseudo-terminal)', () => {
   });
 
   it('terminates a running session', async () => {
-    const h = new PtyProvider().spawn({ agentId: 'p', argv: [node, FAKE_AGENT, '{"sleepMs":60000}'], cwd: process.cwd() });
+    const h = new PtyProvider!().spawn({ agentId: 'p', argv: [node, FAKE_AGENT, '{"sleepMs":60000}'], cwd: process.cwd() });
     await h.terminate(500);
     assert.equal((await h.exited).status, 'terminated');
   });
@@ -28,7 +36,7 @@ describe('PTY provider (real pseudo-terminal)', () => {
   it('does not leak API keys', async () => {
     process.env.FAKE_API_KEY = 'secret';
     try {
-      const h = new PtyProvider().spawn({ agentId: 'p', argv: [node, FAKE_AGENT, '{"printEnvKey":"FAKE_API_KEY"}'], cwd: process.cwd() });
+      const h = new PtyProvider!().spawn({ agentId: 'p', argv: [node, FAKE_AGENT, '{"printEnvKey":"FAKE_API_KEY"}'], cwd: process.cwd() });
       let out = '';
       h.subscribeOutput((c) => { out += c; });
       await h.exited;
