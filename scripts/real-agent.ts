@@ -6,8 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildAgentArgv, detectClis, type CliKind } from '../src/agents/cliAgents.ts';
-import { PtyProvider } from '../src/agents/ptyProvider.ts';
-import { CommandProvider } from '../src/agents/provider.ts';
+import { CommandProvider, type AgentProvider } from '../src/agents/provider.ts';
 import { Orchestrator } from '../src/core/orchestrator.ts';
 import { Store } from '../src/core/store.ts';
 import { GitService } from '../src/git/gitService.ts';
@@ -24,13 +23,21 @@ execFileSync('git', ['init', '-q', '-b', 'main', repo]);
 writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }));
 g('add', '-A'); g('commit', '-q', '-m', 'init');
 
+// PTY needs node-pty's native build; fall back to plain pipes if it is not available on this machine.
+let provider: AgentProvider = new CommandProvider();
+if (!fake) {
+  try { provider = new (await import('../src/agents/ptyProvider.ts')).PtyProvider(); }
+  catch (e) { console.warn('node-pty unavailable, using pipes instead:', (e as Error).message.split('\n')[0]); }
+}
+console.log('provider:', provider.name);
+
 const argv = fake
   ? [process.execPath, '-e', "require('fs').writeFileSync('hello.txt','hi')"]
   : buildAgentArgv(kind, prompt);
 const store = new Store(path.join(base, 'state.db'));
 const orch = new Orchestrator({
   store, git: new GitService({ repoRoot: repo, worktreesDir: path.join(base, 'worktrees') }),
-  provider: fake ? new CommandProvider() : new PtyProvider(), agentTimeoutMs: 10 * 60_000,
+  provider, agentTimeoutMs: 10 * 60_000,
   reviewer: { id: 'qa-1', review: async () => ({ approved: true, blockingIssues: [], warnings: [], summary: 'auto-approved for demo' }) },
 });
 orch.bus.subscribe((e) => console.log(e.ts.slice(11, 23), e.type, e.taskId ?? ''));
