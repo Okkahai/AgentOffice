@@ -1,36 +1,38 @@
-// Original pixel-art sprites (10x16), palette-indexed. Style reference only; no third-party assets.
-// Arms are drawn by the scene so they can animate; sprites hold head, torso and legs.
-const HEAD = {
-  neutral: ['..hhhhhh..', '.hhhhhhhh.', '.hssssssh.', '.hsessesh.', '.ssssssss.', '..ssmmss..'],
-  focused: ['..hhhhhh..', '.hhhhhhhh.', '.hsssssth.', '.hsessesh.', '.ssssssss.', '..ssssss..'],
-  happy:   ['..hhhhhh..', '.hhhhhhhh.', '.hssssssh.', '.hsessesh.', '.ssssssss.', '..smmmms..'],
-  alarmed: ['..hhhhhh..', '.hhhhhhhh.', '.hssssssh.', '.hseesees.', '.ssssssss.', '..sxxxxs..'],
-};
-const BODY = ['..bbbbbb..', '.bbbbbbbb.', '.bbkbbkbb.', '.bbbbbbbb.', '.bbbbbbbb.', '..bbbbbb..', '..dd..dd..', '..dd..dd..', '.ddd..ddd.'];
-const BASE = { s: '#e9c9a3', e: '#14171c', m: '#a4574f', x: '#3a1d1d', d: '#20242c', t: '#14171c' };
+// Original chunky low-res character sprites (11x28), palette-indexed, earthy dark palette.
+// Style reference: tall, faceless-at-a-glance figures lit warmly; the face lives in the portrait panel.
+// Style only; no third-party assets.
+const TOP = [
+  '..hhhhhhh..', '..hhhhhhh..', '..hsssssh..', '..hsesesh..', '...sssss...', '...sssss...', '....sss....',
+  '.ccccccccc.', 'aacccccccaa', 'aacCcccCcaa', 'aaccttccaaa'.slice(0, 11), 'aacccttcaaa'.slice(0, 11), 'aacccccccaa', 'aaCcccccCaa', 'aacccccccaa', 's.ccccccc.s',
+  '.ccccccccc.', '.cCcccccCc.', '.ccccccccc.',
+];
+const LEGS = [
+  ['..ppp.ppp..', '..ppp.ppp..', '..ppp.ppp..', '..ppp.ppp..', '..ppp.ppp..', '..ppp.ppp..', '..ppp.ppp..', '..bbb.bbb..', '.bbbb.bbbb.'],
+  ['..ppp.ppp..', '..ppp.ppp..', '.ppp...ppp.', '.ppp...ppp.', 'ppp.....ppp', 'ppp.....ppp', 'ppp.....ppp', 'bbb.....bbb', 'bbb.....bbb'],
+  ['..ppp.ppp..', '..ppp.ppp..', '..ppp.ppp..', '...pp.pp...', '...pp.pp...', '...pp.pp...', '...pp.pp...', '...bb.bb...', '..bbb.bbb..'],
+];
 const LOOKS = {
-  MANAGER:  { h: '#7a5a8c', b: '#b48ead', k: '#8f6f88' },
-  ENGINEER: { h: '#4a3426', b: '#6aa9ff', k: '#4b83cc' },
-  QA:       { h: '#2f2a24', b: '#5fd38d', k: '#3fa86b' },
+  MANAGER:  { c: '#5e3f52', C: '#43293a', a: '#4e3345', t: '#c9a24a', p: '#231d26', b: '#141116', h: '#2a1c22' },
+  ENGINEER: { c: '#6b5a3a', C: '#4d3f28', a: '#5a4a30', t: '#8fae6a', p: '#2a2620', b: '#15120e', h: '#3a2a1c' },
+  QA:       { c: '#3f5f5a', C: '#2c4541', a: '#345049', t: '#d9dee7', p: '#1f2628', b: '#101414', h: '#1d1d24' },
 };
-// Per-engineer identity: hair colour + optional glasses, chosen by task id so eng 1 and eng 2 differ.
-const HAIRS = ['#4a3426', '#c98a3c', '#1f1f28', '#a84f3a'];
-const WALK = [['..dd..dd..', '.dd....dd.', 'dd......dd'], ['..dd..dd..', '..d....d..', '..dd..dd..']];
-// Event-driven state -> face. Nothing here animates on its own.
-const FACE = { failed: 'alarmed', rejected: 'alarmed', blocked: 'alarmed', done: 'happy', approved: 'happy', merged: 'happy', coding: 'focused', testing: 'focused', reviewing: 'focused', planning: 'focused' };
+const BASE = { s: '#c99a6e', e: '#14100c' };
+const HAIRS = ['#3a2a1c', '#a8743a', '#1d1d24', '#8f3f2e', '#c9c2b0'];
 
-/** opts: { override: shirt colour, variant: engineer index, walk: 0|1 leg frame } */
-export function drawSprite(g, x, y, role, state, override, opts = {}) {
-  const look = { ...BASE, ...(LOOKS[role] ?? LOOKS.ENGINEER), g: '#0c0e12' };
-  const v = opts.variant;
-  if (v != null && role === 'ENGINEER') look.h = HAIRS[v % HAIRS.length];
-  const head = [...HEAD[FACE[state] ?? 'neutral']];
-  if (v != null && v % 2 === 1) head[3] = head[3].replace(/s(?=e)|(?<=e)s/g, 'g');
-  const body = opts.walk == null ? BODY : [...BODY.slice(0, 6), ...WALK[opts.walk]];
-  const rows = [...head, ...body];
+/** opts: { variant, leg: 0 stand | 1 | 2 walk frames, sit: upper body only, typing: 0|1 arm bob } */
+export function drawChar(g, x, y, role, opts = {}) {
+  const look = { ...BASE, ...(LOOKS[role] ?? LOOKS.ENGINEER) };
+  if (opts.variant != null) look.h = HAIRS[opts.variant % HAIRS.length];
+  const rows = opts.sit ? TOP : [...TOP, ...LEGS[opts.leg ?? 0]];
+  const glasses = role === 'QA' || (opts.variant != null && opts.variant % 2 === 1);
   rows.forEach((row, j) => [...row].forEach((c, i) => {
     if (c === '.') return;
-    g.fillStyle = c === 'b' && override ? override : look[c];
-    g.fillRect(x + i, y + j, 1, 1);
+    let col = look[c];
+    if (glasses && j === 3 && c === 's') col = '#0c0a08';
+    if (opts.typing != null && j >= 8 && j <= 15 && (i < 2 || i > 8) && c === 'a') col = look.a;
+    g.fillStyle = col;
+    const dy = opts.typing != null && j >= 14 && (i < 2 || i > 8) ? opts.typing : 0;
+    g.fillRect(x + i, y + j + dy, 1, 1);
   }));
 }
+export const CHAR_H = 28;

@@ -51,13 +51,13 @@ export function reduce(state, ev) {
       if (task) task.status = p.to;
       break;
     case 'task.assigned': {
-      const a = ensureEngineer(s, ev); a.taskId = ev.taskId; a.state = 'idle'; a.assignedAt = ev.ts;
+      const a = ensureEngineer(s, ev); a.taskId = ev.taskId; a.state = 'idle'; a.assignedAt = ev.ts; a.done = false;
       say(s, a.id, `Assigned: ${task?.title ?? ''}`, ev);
       break;
     }
     case 'agent.spawned': { const a = ensureEngineer(s, ev); a.state = 'idle'; break; }
     case 'agent.coding': { const a = ensureEngineer(s, ev); a.state = 'coding'; break; }
-    case 'agent.completed': { const a = ensureEngineer(s, ev); a.state = 'idle'; say(s, a.id, 'Done coding', ev); break; }
+    case 'agent.completed': { const a = ensureEngineer(s, ev); a.state = 'idle'; a.done = true; say(s, a.id, 'Done coding', ev); break; }
     case 'agent.failed': { const a = ensureEngineer(s, ev); a.state = 'failed'; say(s, a.id, 'Agent failed', ev); break; }
     case 'task.failed': {
       const a = s.agents[engineerId(ev)];
