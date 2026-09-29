@@ -32,11 +32,15 @@ console.log('ok');
   writeFileSync(path.join(repo, 'shared.txt'), 'base\n');
   git(repo, 'add', '-A');
   git(repo, 'commit', '-q', '-m', 'init');
-  return { base, repo, worktrees, cleanup: () => rmSync(base, { recursive: true, force: true }) };
+  return { base, repo, worktrees, cleanup: () => { for (const st of openStores.splice(0)) { try { st.close(); } catch { /* already closed */ } } rmSync(base, { recursive: true, force: true }); } };
 }
+
+// Windows cannot delete a sqlite file that is still open, so cleanup closes every store the tests opened.
+const openStores: Store[] = [];
 
 export function makeOrchestrator(sb: ReturnType<typeof makeSandbox>, over: Partial<OrchestratorConfig> = {}, dbFile = ':memory:') {
   const store = new Store(dbFile);
+  openStores.push(store);
   const gitSvc = new GitService({ repoRoot: sb.repo, worktreesDir: sb.worktrees });
   const bus = new EventBus();
   const orch = new Orchestrator({ store, git: gitSvc, bus, provider: new CommandProvider(), reviewer: { id: 'qa-1', review: async () => ({ approved: true, blockingIssues: [], warnings: [], summary: 'lgtm' }) }, ...over });
