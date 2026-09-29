@@ -19,6 +19,8 @@ export interface OrchestratorConfig {
   agentTimeoutMs?: number;
   /** Explicit checks; otherwise discovered from the repository (package.json scripts). */
   checks?: Check[];
+  /** Live agent output (terminal stream), for UIs and logs. Never used for decisions. */
+  onAgentOutput?: (taskId: number, chunk: string) => void;
   /** How to start the agent for a task. Default: JSON `spec.argv`. */
   launch?: (task: Task) => Pick<SpawnRequest, 'argv' | 'env'>;
 }
@@ -165,6 +167,7 @@ export class Orchestrator {
     const inv = (this.#cfg.launch ?? defaultLaunch)(t);
     const handle = this.#cfg.provider.spawn({ agentId, argv: inv.argv, env: { AGENT_OFFICE_TASK_ID: String(id), ...inv.env }, cwd: wt.path });
     this.#agents.set(id, handle);
+    handle.subscribeOutput((chunk) => this.#cfg.onAgentOutput?.(id, chunk));
     this.#emit('agent.spawned', id, { pid: handle.pid }, agentId);
     this.#emit('agent.coding', id, {}, agentId);
 

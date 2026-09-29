@@ -37,7 +37,7 @@ const argv = fake
 const store = new Store(path.join(base, 'state.db'));
 const orch = new Orchestrator({
   store, git: new GitService({ repoRoot: repo, worktreesDir: path.join(base, 'worktrees') }),
-  provider, agentTimeoutMs: 10 * 60_000,
+  provider, onAgentOutput: (_id, chunk) => process.stdout.write(chunk), agentTimeoutMs: 10 * 60_000,
   reviewer: { id: 'qa-1', review: async () => ({ approved: true, blockingIssues: [], warnings: [], summary: 'auto-approved for demo' }) },
 });
 orch.bus.subscribe((e) => console.log(e.ts.slice(11, 23), e.type, e.taskId ?? ''));
