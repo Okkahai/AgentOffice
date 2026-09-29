@@ -95,7 +95,7 @@ Full design, stack decisions and the Electron IPC boundary: [docs/architecture.m
 
 - [x] Git control plane, state machine, SQLite, verification, review gate, backup, merge, rollback, recovery
 - [x] Provider interface, pipe and PTY providers, Claude Code / Codex / OpenCode detection and argv
-- [ ] First verified run with a real CLI agent on a real machine
+- [x] First verified run with a real CLI agent (Claude Code via PTY on Windows: worktree → agent → verify → review → backup → merge → post-verify, `COMPLETED`)
 - [ ] Manager agent: goal → dependency-aware task graph
 - [ ] Agent-backed QA reviewer, OS-level sandboxing of agent processes
 - [ ] Electron shell: tasks, terminal, diff, reviews, merges, backups, event log
