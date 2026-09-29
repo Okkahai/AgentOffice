@@ -6,7 +6,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const office = new Office($('#office'));
 let scene = initialOffice(); office.setState(scene); office.start();
 
-const app = { data: { tasks: [], backups: [], merges: [], reviews: [], output: {}, token: '', targetBranch: '' }, events: [], tab: 'tasks', selected: null };
+const app = { data: { tasks: [], backups: [], merges: [], reviews: [], output: {}, token: '', targetBranch: '' }, events: [], tab: 'agents', selected: null };
 
 async function refresh() {
   app.data = await (await fetch('/api/state')).json();
@@ -21,7 +21,7 @@ es.addEventListener('ready', () => { $('#live').className = 'live on'; $('#live 
 es.onerror = () => { $('#live').className = 'live'; $('#live span').textContent = 'reconnecting'; };
 es.addEventListener('event', (m) => {
   const ev = JSON.parse(m.data);
-  app.events.push(ev); reduce(scene, ev); office.setState(scene);
+  app.events.push(ev); reduce(scene, ev); office.setState(scene); if (app.tab === 'agents') render();
   clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 150);
 });
 es.addEventListener('output', (m) => {
@@ -50,7 +50,7 @@ const ACTIVE = ['ASSIGNED', 'WORKING', 'VERIFYING', 'REVIEWING'];
 function render() {
   const v = $('#view');
   if (app.tab === 'terminal') return renderTerminal(true);
-  const fns = { tasks: tasksView, events: eventsView, merges: mergesView, backups: backupsView };
+  const fns = { agents: agentsView, tasks: tasksView, events: eventsView, merges: mergesView, backups: backupsView };
   v.innerHTML = fns[app.tab]();
 }
 function tasksView() {
@@ -62,6 +62,15 @@ function tasksView() {
     <td><span class="pill s-${x.status}">${x.status}</span><div style="color:var(--dim)">verify: ${x.verification_status} · review: ${x.review_status}</div></td>
     <td>${x.dependsOn.length ? x.dependsOn.map((d) => '#' + d).join(' ') : '—'}</td>
     <td>${ACTIVE.includes(x.status) ? `<button class="act danger" onclick="ao.cancel(${x.id})">Cancel</button>` : ''}</td></tr>`).join('')}</table>`;
+}
+const ROLE = { MANAGER: 'manager', ENGINEER: 'engineer', QA: 'qa' };
+// Expression comes from real agent state only (same mapping the office sprites use).
+const expr = (a) => a.state === 'failed' ? 'alarm' : ['coding', 'testing', 'reviewing', 'planning'].includes(a.state) ? 'focus' : /approved|done|merged|passed/i.test(scene.bubbles[a.id]?.text ?? '') ? 'smile' : 'neutral';
+function agentsView() {
+  const list = Object.values(scene.agents);
+  return `<div class="cards">${list.map((a) => `<figure class="card ${a.state === 'failed' ? 'bad' : ''}">
+    <img src="/assets/${ROLE[a.role] ?? 'engineer'}-${expr(a)}.png" alt="${esc(a.id)}" width="100" height="96">
+    <figcaption><b>${esc(a.id)}</b><br>${esc(a.role)} · ${esc(a.state)}${a.taskId != null ? `<br>task #${a.taskId}` : ''}${scene.bubbles[a.id]?.text ? `<q>${esc(scene.bubbles[a.id].text)}</q>` : ''}</figcaption></figure>`).join('')}</div>`;
 }
 let termScroll = true;
 function renderTerminal(full) {

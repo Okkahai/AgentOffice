@@ -11,7 +11,7 @@ import { assertInside } from '../git/paths.ts';
 // the OS: every action goes through Orchestrator methods, so it cannot bypass the state machine.
 // Security: binds 127.0.0.1 only, rejects foreign Host headers (DNS rebinding), no CORS, per-run token for POSTs.
 
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' };
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
 
 /** Keeps the tail of each task's terminal output (in memory only). */
