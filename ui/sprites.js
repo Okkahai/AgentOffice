@@ -13,12 +13,21 @@ const LOOKS = {
   ENGINEER: { h: '#4a3426', b: '#6aa9ff', k: '#4b83cc' },
   QA:       { h: '#2f2a24', b: '#5fd38d', k: '#3fa86b' },
 };
+// Per-engineer identity: hair colour + optional glasses, chosen by task id so eng 1 and eng 2 differ.
+const HAIRS = ['#4a3426', '#c98a3c', '#1f1f28', '#a84f3a'];
+const WALK = [['..dd..dd..', '.dd....dd.', 'dd......dd'], ['..dd..dd..', '..d....d..', '..dd..dd..']];
 // Event-driven state -> face. Nothing here animates on its own.
 const FACE = { failed: 'alarmed', rejected: 'alarmed', blocked: 'alarmed', done: 'happy', approved: 'happy', merged: 'happy', coding: 'focused', testing: 'focused', reviewing: 'focused', planning: 'focused' };
 
-export function drawSprite(g, x, y, role, state, override) {
-  const look = { ...BASE, ...(LOOKS[role] ?? LOOKS.ENGINEER) };
-  const rows = [...HEAD[FACE[state] ?? 'neutral'], ...BODY];
+/** opts: { override: shirt colour, variant: engineer index, walk: 0|1 leg frame } */
+export function drawSprite(g, x, y, role, state, override, opts = {}) {
+  const look = { ...BASE, ...(LOOKS[role] ?? LOOKS.ENGINEER), g: '#0c0e12' };
+  const v = opts.variant;
+  if (v != null && role === 'ENGINEER') look.h = HAIRS[v % HAIRS.length];
+  const head = [...HEAD[FACE[state] ?? 'neutral']];
+  if (v != null && v % 2 === 1) head[3] = head[3].replace(/s(?=e)|(?<=e)s/g, 'g');
+  const body = opts.walk == null ? BODY : [...BODY.slice(0, 6), ...WALK[opts.walk]];
+  const rows = [...head, ...body];
   rows.forEach((row, j) => [...row].forEach((c, i) => {
     if (c === '.') return;
     g.fillStyle = c === 'b' && override ? override : look[c];

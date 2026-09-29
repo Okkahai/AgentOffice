@@ -57,12 +57,12 @@ export class Office {
     g.fillStyle = '#3a3f4a'; g.fillRect(x + 8, y - 6, 12, 9);
     g.fillStyle = active ? (Math.floor(t / 250) % 2 ? '#3b7f57' : '#5fd38d') : tint; g.fillRect(x + 9, y - 5, 10, 7);
   }
-  person(x, y, color, state, t, role = "ENGINEER") {
+  person(x, y, color, state, t, role = "ENGINEER", opts = {}) {
     const g = this.ctx;
     const bob = state === 'coding' || state === 'testing' || state === 'reviewing' ? (Math.floor(t / 180) % 2) : 0;
-    drawSprite(g, x, y, role, state, state === 'failed' ? color : undefined);
+    drawSprite(g, x, y, role, state, state === 'failed' ? color : undefined, opts);
     g.fillStyle = C.skin; g.fillRect(x - 1, y + 8 - bob, 2, 3); g.fillRect(x + 9, y + 8 + bob, 2, 3);
-    g.fillStyle = '#20242c'; g.fillRect(x + 2, y + 13, 2, 3); g.fillRect(x + 6, y + 13, 2, 3);
+    if (opts.walk == null) { g.fillStyle = '#20242c'; g.fillRect(x + 2, y + 13, 2, 3); g.fillRect(x + 6, y + 13, 2, 3); }
     if (state === 'failed') { g.fillStyle = C.red; g.fillRect(x + 4, y - 9, 2, 5); g.fillRect(x + 4, y - 3, 2, 2); }
   }
   bubble(id, x, y, now) {
@@ -86,7 +86,10 @@ export class Office {
       const a = eng[i];
       this.desk(x, y, a?.state === 'coding', t);
       if (a) {
-        this.person(x + 7, y - 16, a.state === 'failed' ? '#8a4b4b' : C.blue, a.state, t);
+        // Walk in from the door only for a fresh assignment event; replayed history just sits at the desk.
+        const age = a.assignedAt ? now - Date.parse(a.assignedAt) : Infinity, WALK_MS = 1200;
+        const walking = age >= 0 && age < WALK_MS, dx = walking ? Math.round((1 - age / WALK_MS) * -(x - 106)) : 0;
+        this.person(x + 7 + dx, y - 16, a.state === 'failed' ? '#8a4b4b' : C.blue, a.state, t, 'ENGINEER', { variant: (a.taskId ?? i) - 1, walk: walking ? Math.floor(t / 150) % 2 : undefined });
         this.label({ id: `eng ${a.taskId}` }, x + 30, y + 2);
         this.bubble(a.id, x - 2, y - 30, now);
       }

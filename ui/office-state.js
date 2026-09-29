@@ -51,7 +51,7 @@ export function reduce(state, ev) {
       if (task) task.status = p.to;
       break;
     case 'task.assigned': {
-      const a = ensureEngineer(s, ev); a.taskId = ev.taskId; a.state = 'idle';
+      const a = ensureEngineer(s, ev); a.taskId = ev.taskId; a.state = 'idle'; a.assignedAt = ev.ts;
       say(s, a.id, `Assigned: ${task?.title ?? ''}`, ev);
       break;
     }
