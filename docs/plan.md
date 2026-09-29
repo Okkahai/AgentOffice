@@ -21,7 +21,7 @@
 ## Phases
 
 1. **Core loop (this slice, done):** Git control plane, state machine, SQLite, provider interface + command provider, verification, review gate, backup/merge/rollback, recovery, tests, demo.
-2. **Real agents and PTY:** `ClaudeCodeProvider` / `CodexProvider` / `OpenCodeProvider` (argv builders), CLI detection, node-pty provider, agent-backed reviewer, OS-level sandboxing of agent processes (cwd-jail / container), main-tree write prevention instead of detection.
+2. **Real agents and PTY:** (done: CLI detection, argv builders, PTY provider) remaining: wire providers into a real run and verify flags per installed CLI version, agent-backed reviewer, OS-level sandboxing of agent processes (cwd-jail / container), main-tree write prevention instead of detection.
 3. **Manager and task graph:** objective → plan → task graph (Manager agent proposes JSON, deterministic validator accepts), smallest-team heuristic, project memory.
 4. **Electron shell:** IPC per `architecture.md`, views (Tasks, Agents, Terminal, Diff, Reviews, Merges, Backups, Event log, Settings), agent inspector.
 5. **Visual office:** PixiJS scene driven only by `EventBus` events.

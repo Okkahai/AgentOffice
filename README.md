@@ -6,7 +6,7 @@ Status: **core loop slice**. No UI yet. See [docs/architecture.md](docs/architec
 
 ```
 npm install
-npm test          # 31 integration tests on disposable temp repos (Node >= 22.18, git)
+npm test          # 35 integration tests on disposable temp repos (Node >= 22.18, git)
 npm run typecheck
 npm run demo      # full loop on a throwaway repo, prints the event trail
 ```

@@ -27,7 +27,7 @@ The UI never touches Git or the OS. Business logic never depends on animations: 
 | Language | TypeScript, run directly by Node 22 type stripping (`node --test`, no build step) | Zero toolchain for the core; `tsc --noEmit` for typechecking |
 | DB | SQLite via built-in `node:sqlite` | No native addon to rebuild for Electron. Revisit (`better-sqlite3`) only if the experimental API becomes a problem |
 | Git | System `git` via `execFile` with argv arrays, no shell | Deterministic, auditable |
-| Agent processes | `child_process` pipes behind `AgentProvider` | `node-pty` is a native module that needs an Electron rebuild. A PTY provider implements the same interface (see Phase 2) |
+| Agent processes | `AgentProvider` with two implementations: `CommandProvider` (pipes, used by the orchestrator tests) and `PtyProvider` (`node-pty`, for interactive terminals) | `node-pty` is native and needs an Electron rebuild when the shell lands |
 | UI (later) | Electron + React + PixiJS + xterm.js | As briefed; not started |
 
 No paid inference API is used anywhere. Agents are CLI processes (Claude Code, Codex, OpenCode) using the user's own logins; `scrubbedEnv` strips `*_API_KEY/_TOKEN/_SECRET/PASSWORD` from agent environments.
@@ -68,7 +68,7 @@ Typed `EventType` union in `events.ts` (a subset of the brief's list is implemen
 
 ## Agent provider interface
 
-`spawn(req) → AgentHandle { getStatus, sendInput, interrupt, terminate, subscribeOutput, exited }`. `CommandProvider` runs any argv. `ClaudeCodeProvider`, `CodexProvider`, `OpenCodeProvider` will only build argv and delegate; nothing else in the codebase knows a specific CLI. Tests use a scripted fake agent (`test/fixtures/fake-agent.mjs`), a real OS process, so CI needs no AI CLI or keys.
+`spawn(req) → AgentHandle { getStatus, sendInput, interrupt, terminate, subscribeOutput, exited }`. `CommandProvider`/`PtyProvider` run any argv. `src/agents/cliAgents.ts` is the only place that knows Claude Code / Codex / OpenCode: PATH detection (no shell) and one-shot argv builders. The unattended flags (`--permission-mode acceptEdits`, `--full-auto`) are a security decision to revisit before real runs; not exercised by tests. Tests use a scripted fake agent (`test/fixtures/fake-agent.mjs`), a real OS process, so CI needs no AI CLI or keys.
 
 ## Electron IPC boundary (design, not built)
 
