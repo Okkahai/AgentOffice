@@ -20,8 +20,8 @@ try {
 describe('PTY provider (real pseudo-terminal)', { skip: !PtyProvider && 'node-pty not available' }, () => {
   it('streams output, accepts input, reports exit', async () => {
     const h = new PtyProvider!().spawn({ agentId: 'p', argv: [node, '-e', "process.stdin.once('data',d=>{console.log('got:'+d.toString().trim());process.exit(0)});console.log('ready')"], cwd: process.cwd() });
-    let out = '';
-    h.subscribeOutput((c) => { out += c; if (out.includes('ready')) h.sendInput('ping\n'); });
+    let out = '', sent = false;
+    h.subscribeOutput((c) => { out += c; if (!sent && out.includes('ready')) { sent = true; h.sendInput('ping\n'); } });
     const exit = await h.exited;
     assert.equal(exit.code, 0);
     assert.match(out, /got:ping/);
