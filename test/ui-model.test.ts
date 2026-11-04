@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 // @ts-expect-error plain browser module without types
-import { agentState, attention, goalState, graphLayout, parseDiff, pipeline } from '../ui/model.js';
+import { agentState, attention, goalState, graphLayout, highlight, parseDiff, pipeline } from '../ui/model.js';
 
 const ev = (type: string, taskId?: number, payload = {}) => ({ type, ts: '2026-01-01T00:00:00Z', taskId, payload });
 const task = (id: number, status: string, dependsOn: number[] = [], extra = {}) => ({ id, title: `t${id}`, status, dependsOn, failure_reason: null, ...extra });
@@ -51,4 +51,12 @@ it('diff parsing numbers lines, pairs changes for split view and keeps removed l
   assert.deepEqual(rows[3].dels, [{ n: 4, text: '-- old comment' }]);
   assert.deepEqual(rows[3].adds, [{ n: 4, text: '-- new comment' }, { n: 5, text: 'added' }]);
   assert.deepEqual(rows[4], { t: 'ctx', l: 5, r: 6, text: 'tail' });
+});
+
+it('highlights code safely and leaves unknown file types as escaped text', () => {
+  assert.equal(highlight('const x = "<b>"; // hi', 'a.ts'),
+    '<span class="sy-k">const</span> x = <span class="sy-s">&quot;&lt;b&gt;&quot;</span>; <span class="sy-c">// hi</span>');
+  assert.equal(highlight('x = 1  # note', 'a.py'), 'x = <span class="sy-n">1</span>  <span class="sy-c"># note</span>');
+  assert.equal(highlight('<script>alert(1)</script>', 'notes.txt'), '&lt;script&gt;alert(1)&lt;/script&gt;');
+  assert.doesNotMatch(highlight('"<img onerror=x>', 'a.js'), /<img/);
 });

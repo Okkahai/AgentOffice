@@ -119,7 +119,7 @@ Full design, stack decisions and the Electron IPC boundary: [docs/architecture.m
 - [x] Dedicated merge worktree (your working tree is never merged into)
 - [ ] OS-level sandboxing and permission profiles
 - [x] Multi-project workspace
-- [x] Side-by-side diff with search, desktop notifications for attention items
+- [x] Side-by-side, syntax-highlighted diff with search, desktop notifications for attention items
 - [ ] Interactive sessions
 - [ ] Electron packaging (typed IPC), GitHub PR workflow
 

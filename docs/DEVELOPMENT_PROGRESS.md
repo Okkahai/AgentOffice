@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 57/57 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
+Last updated 2026-11-04. Evidence: `npm test` 58/58 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
 
 ## Feature inventory
 
@@ -22,7 +22,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Agent-backed independent review | PARTIAL | `ClaudeReviewer` (separate read-only Claude Code process, strict parsing tested in `manager.test.ts`, wiring exercised with a stub binary). Not yet run with the real CLI; review comments and agent responses to feedback are not built |
 | Real-repository launcher | IMPLEMENTED | `npm start -- <repo>`. Run end to end on Linux with a stub `claude` executable on PATH: goal via `POST /api/goal`, plan of 2 dependent tasks, `ClaudeReviewer` approvals, 2 verified merges. Not yet run with the real CLIs |
 | Workspace UI: overview, inbox, sessions, task graph and table, reviews, git, activity, inspector, Ctrl+K | IMPLEMENTED | Screenshot-reviewed against the demo; pure derivations tested in `ui-model.test.ts` |
-| Diff viewer | PARTIAL | Unified and side-by-side views with old/new line numbers, find in diff (Enter cycles hits), file list, live worktree or committed range (`server.test.ts`, `parseDiff` in `ui-model.test.ts`). No syntax highlighting yet |
+| Diff viewer | PARTIAL | Unified and side-by-side views with old/new line numbers, find in diff (Enter cycles hits), file list, live worktree or committed range, line-local syntax highlighting for common languages (`server.test.ts`; `parseDiff` and `highlight`, including HTML escaping, in `ui-model.test.ts`). The highlighter does not track multi-line strings or comments |
 | Terminal | PARTIAL | Real PTY output, read-only. Agents run one-shot non-interactively, so input, resize to the PTY and search are not wired |
 | Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). Opt-in browser notifications for new items while the window is unfocused (enable from Ctrl+K), checked in Chromium with a refused merge. No permission or input requests yet (no provider reports them) |
 | Session states | PARTIAL | Running / exited / failed / timed out from real events. Retry of failed, conflicted or blocked tasks (re-queues tasks blocked on it, refused while a merge is still on the target) is in the inspector (`orchestrator.test.ts`, `server.test.ts`, checked in Chromium). Interrupt, resume and waiting-for-input are not exposed |

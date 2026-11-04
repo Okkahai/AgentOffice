@@ -1,6 +1,6 @@
 // Agent Office UI. Everything shown comes from /api/state, /api/tasks/:id/* and the SSE event stream.
 // Nothing here is authoritative: actions go to the server, which routes them through the Orchestrator.
-import { attention, agentState, describe, goalState, graphLayout, parseDiff, pipeline, severity } from './model.js';
+import { attention, agentState, describe, goalState, graphLayout, highlight, parseDiff, pipeline, severity } from './model.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -285,12 +285,12 @@ function paneDiff() {
   return `${bar}${files}<div class="diff ${mode}" id="diff-body">${renderDiffRows(parseDiff(df.patch), mode)}</div>`;
 }
 function renderDiffRows(rows, mode) {
-  let fi = -1;
+  let fi = -1, file = '';
   const num = (n) => `<span class="ln">${n ?? ''}</span>`;
-  const uni = (k, l, r, text, mark) => `<div class="dl ${k}">${num(l)}${num(r)}<span class="tx">${mark}${esc(text) || ' '}</span></div>`;
-  const half = (k, n, text) => (n == null ? '<div class="dl empty-half"><span class="ln"></span><span class="tx"> </span></div>' : `<div class="dl ${k}">${num(n)}<span class="tx">${esc(text) || ' '}</span></div>`);
+  const uni = (k, l, r, text, mark) => `<div class="dl ${k}">${num(l)}${num(r)}<span class="tx">${mark}${highlight(text, file) || ' '}</span></div>`;
+  const half = (k, n, text) => (n == null ? '<div class="dl empty-half"><span class="ln"></span><span class="tx"> </span></div>' : `<div class="dl ${k}">${num(n)}<span class="tx">${highlight(text, file) || ' '}</span></div>`);
   return rows.map((r) => {
-    if (r.t === 'file') { fi++; return `<div class="fh" id="df-${fi}">${esc(r.text)}</div>`; }
+    if (r.t === 'file') { fi++; file = r.text; return `<div class="fh" id="df-${fi}">${esc(r.text)}</div>`; }
     if (r.t === 'hunk') return `<div class="dl hk"><span class="tx">${esc(r.text)}</span></div>`;
     if (mode === 'unified') {
       if (r.t === 'ctx') return uni('cx', r.l, r.r, r.text, ' ');

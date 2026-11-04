@@ -134,3 +134,29 @@ export function parseDiff(patch) {
   flush();
   return rows;
 }
+
+const KW = new Set(('break case catch class const continue def default do elif else enum export extends false finally fn for from func function '
+  + 'if impl import in interface let match mod new nil none null package pass pub raise return self static struct super switch this throw '
+  + 'true try type undefined use var void while with yield async await lambda not and or is as of None True False').split(' '));
+const HASH_COMMENT = /\.(py|sh|bash|zsh|rb|ya?ml|toml|r|pl|ps1|conf|ini|dockerfile)$|(^|\/)(Dockerfile|Makefile)$/i;
+const CODE = /\.(m?[jt]sx?|cjs|py|go|rs|java|kt|cs|c|h|cc|cpp|hpp|swift|rb|php|sh|bash|ps1|ya?ml|toml|json|css|scss|sql|lua|dart|scala)$|(^|\/)(Dockerfile|Makefile)$/i;
+const ESC = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Small per-line highlighter for diffs: comments, strings, numbers and common keywords. Returns escaped HTML.
+ * shortcut: line-local only (multi-line strings and comments are not tracked); swap for a real grammar if it misleads.
+ */
+export function highlight(text, file) {
+  const s = String(text ?? '');
+  if (!CODE.test(file ?? '')) return ESC(s);
+  const comment = HASH_COMMENT.test(file) ? '#.*' : /\.sql$/i.test(file) ? '--.*' : '\\/\\/.*|\\/\\*.*?(?:\\*\\/|$)';
+  const re = new RegExp(`(${comment})|("(?:\\\\.|[^"\\\\])*"?|'(?:\\\\.|[^'\\\\])*'?|\`(?:\\\\.|[^\`\\\\])*\`?)|\\b(\\d[\\d_.]*(?:e[+-]?\\d+)?|0x[\\da-f]+)\\b|([A-Za-z_$][\\w$]*)`, 'gi');
+  let out = '', last = 0;
+  for (const m of s.matchAll(re)) {
+    const cls = m[1] ? 'c' : m[2] ? 's' : m[3] ? 'n' : KW.has(m[4]) ? 'k' : '';
+    out += ESC(s.slice(last, m.index));
+    out += cls ? `<span class="sy-${cls}">${ESC(m[0])}</span>` : ESC(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + ESC(s.slice(last));
+}

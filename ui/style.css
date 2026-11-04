@@ -155,6 +155,11 @@ td.title { color: var(--text); }
 .diff .ad { color: var(--ok); background: rgba(120, 185, 162, .07); }
 .diff .de { color: var(--err); background: rgba(212, 123, 123, .07); }
 .diff .cx { color: var(--text-2); }
+.diff .sy-k { color: var(--info); }
+.diff .sy-s { color: var(--warn); }
+.diff .sy-n { color: var(--text); }
+.diff .sy-c { color: var(--text-3); font-style: italic; }
+.diff .de .sy-k, .diff .de .sy-s, .diff .de .sy-n { color: inherit; opacity: .9; }
 .diff .hit { box-shadow: inset 2px 0 0 var(--warn); }
 .diff .hit .tx { background: rgba(200, 166, 108, .10); }
 .diff .cur .tx { background: rgba(200, 166, 108, .24); }
