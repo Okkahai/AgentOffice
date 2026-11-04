@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 58/58 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
+Last updated 2026-11-04. Evidence: `npm test` 59/59 passing and `npm run typecheck` clean on Linux (Node 22.23). Windows (Node 24, 2026-11-04): typecheck clean, the suite passed except that the PTY probe hung and `claude.CMD` could not be spawned (`spawn EINVAL`); both fixed since, Windows re-run pending.
 
 ## Feature inventory
 

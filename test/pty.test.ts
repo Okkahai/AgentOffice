@@ -3,17 +3,16 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { buildAgentArgv, detectClis, parseProfile } from '../src/agents/cliAgents.ts';
+import { buildAgentArgv, detectClis, parseProfile, resolveShim } from '../src/agents/cliAgents.ts';
 import { FAKE_AGENT } from './helpers.ts';
 
 const node = process.execPath;
 
-// node-pty is a native module; skip (don't hang) when it isn't built on this machine.
+// node-pty is a native module; skip (don't hang) when it isn't built here or never reports exit (some Windows ConPTY setups).
 let PtyProvider: typeof import('../src/agents/ptyProvider.ts').PtyProvider | undefined;
 try {
-  PtyProvider = (await import('../src/agents/ptyProvider.ts')).PtyProvider;
-  const probe = new PtyProvider!().spawn({ agentId: 'probe', argv: [node, '-e', '0'], cwd: process.cwd() });
-  await probe.exited;
+  const mod = await import('../src/agents/ptyProvider.ts');
+  PtyProvider = (await mod.ptyWorks()) ? mod.PtyProvider : undefined;
 } catch { PtyProvider = undefined; }
 
 
@@ -75,3 +74,20 @@ describe('agent profiles', () => {
     assert.throws(() => parseProfile([], d), /object/);
   });
 });
+
+describe('Windows npm shims', () => {
+  it('runs the shim target directly, never through a shell', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ao-shim-'));
+    try {
+      const js = path.join(dir, 'claude.cmd'), exe = path.join(dir, 'codex.cmd'), odd = path.join(dir, 'odd.cmd');
+      writeFileSync(js, '@ECHO off\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n)\r\nendLocal & "%_prog%"  "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\r\n');
+      writeFileSync(exe, '@ECHO off\r\n"%~dp0\\node_modules\\@openai\\codex\\bin\\codex.exe"   %*\r\n');
+      writeFileSync(odd, '@ECHO off\r\ncall something-else %*\r\n');
+      assert.deepEqual(resolveShim([js, '-p', 'a & b'], 'win32'), [process.execPath, path.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'), '-p', 'a & b']);
+      assert.deepEqual(resolveShim([exe, 'exec', 'x'], 'win32'), [path.join(dir, 'node_modules', '@openai', 'codex', 'bin', 'codex.exe'), 'exec', 'x']);
+      assert.throws(() => resolveShim([odd], 'win32'), /without a shell/);
+      assert.deepEqual(resolveShim([js, 'x'], 'linux'), [js, 'x'], 'only Windows is affected');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+

@@ -1,4 +1,4 @@
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 // Provider-specific knowledge lives only here: how to find each CLI and build its non-interactive argv.
@@ -71,4 +71,21 @@ export function parseProfile(raw: unknown, defaults: AgentProfile): AgentProfile
   const branch = o.branch ?? defaults.branch;
   if (branch != null && (typeof branch !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(branch) || branch.includes('..'))) throw new Error('profile: branch must be a plain branch name');
   return { agent: agent as CliKind, model: model as string | undefined, branch: branch as string | undefined };
+}
+
+/**
+ * Windows: npm installs CLIs as .cmd shims, which Node refuses to spawn without a shell (and a shell would
+ * re-parse the prompt). Read the shim and run its real target directly: a .js entry under this Node, or an .exe.
+ */
+export function resolveShim(argv: string[], platform: string = process.platform): string[] {
+  const [cmd, ...rest] = argv;
+  if (platform !== 'win32' || !cmd || !/\.(cmd|bat)$/i.test(cmd)) return argv;
+  const text = readFileSync(cmd, 'utf8');
+  const targets = [...text.matchAll(/"%~?dp0%?\\([^"%]+)"/gi)].map((m) => m[1]!).filter((t) => !/(^|\\)node(\.exe)?$/i.test(t));
+  const target = targets.at(-1);
+  if (!target) throw new Error(`${cmd} is not an npm shim Agent Office can run without a shell; put the CLI's .exe on PATH instead`);
+  const full = path.join(path.dirname(cmd), ...target.split(/[\\/]/));
+  if (/\.[cm]?js$/i.test(full)) return [process.execPath, full, ...rest];
+  if (/\.exe$/i.test(full)) return [full, ...rest];
+  throw new Error(`${cmd} points at ${full}, which is neither a .js entry nor an .exe`);
 }

@@ -25,8 +25,11 @@ console.log('detected CLIs:', clis);
 if (!clis.claude) console.warn('claude CLI missing: only deterministic review gates will run, and goal planning is unavailable');
 
 let provider: AgentProvider = new CommandProvider();
-try { provider = new (await import('../src/agents/ptyProvider.ts')).PtyProvider(); }
-catch (e) { console.warn('node-pty unavailable, using pipes:', (e as Error).message.split('\n')[0]); }
+try {
+  const mod = await import('../src/agents/ptyProvider.ts');
+  if (await mod.ptyWorks()) provider = new mod.PtyProvider();
+  else console.warn('node-pty did not report a test process exit, using pipes');
+} catch (e) { console.warn('node-pty unavailable, using pipes:', (e as Error).message.split('\n')[0]); }
 
 /** One Orchestrator per repository: its own state.db, worktrees and merge lock. */
 async function openProject(repo: string): Promise<ProjectHandle & { dataDir: string }> {
