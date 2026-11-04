@@ -113,10 +113,11 @@ Full design, stack decisions and the Electron IPC boundary: [docs/architecture.m
 - [x] Manager agent: goal → validated, dependency-aware task graph (deterministic gate)
 - [x] Workspace UI: overview, attention inbox, sessions, task graph, reviews, git, activity, inspector (terminal, diff, review, events), command palette
 - [x] Goal entry from the UI, independent Claude Code reviewer, `npm start` on a real repository
-- [ ] OS-level sandboxing and permission profiles, dedicated merge worktree
+- [x] Dedicated merge worktree (your working tree is never merged into)
+- [ ] OS-level sandboxing and permission profiles
 - [ ] Multi-project workspace, interactive sessions, desktop notifications
 - [ ] Electron packaging (typed IPC), GitHub PR workflow
 
 ## Known limits
 
-Agents are not OS-sandboxed yet (escapes into the main tree are detected, not prevented). Merges run in your main working tree, which must be clean. The unattended CLI flags (`--permission-mode acceptEdits`, `--full-auto`) are a decision to revisit before real use. A failed post-merge check keeps the merge and offers rollback; it does not roll back on its own.
+Agents are not OS-sandboxed yet (escapes into the main tree are detected, not prevented). Merges run in a dedicated merge worktree; if you have the target branch checked out, that tree must be clean so it can be fast-forwarded. The unattended CLI flags (`--permission-mode acceptEdits`, `--full-auto`) are a decision to revisit before real use. A failed post-merge check keeps the merge and offers rollback; it does not roll back on its own.

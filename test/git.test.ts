@@ -118,6 +118,34 @@ describe('git control plane', () => {
     await svc.removeWorktree(w.path);
   });
 
+  it('merges in the dedicated merge worktree while the user works on another branch, leaving their tree untouched', async () => {
+    const w = await svc.createWorktree({ taskId: 140, title: 'side merge', baseRef: 'refs/heads/main' });
+    writeFileSync(path.join(w.path, 'side.txt'), 'side\n');
+    const sha = await svc.commit(w.path, 'side');
+    const target = git(sb.repo, 'rev-parse', 'main');
+    git(sb.repo, 'checkout', '-qb', 'user-feature');
+    writeFileSync(path.join(sb.repo, 'user-wip.txt'), 'uncommitted user work');
+    try {
+      const backup = await svc.createBackup({ taskId: 140, targetBranch: 'main' });
+      const res = await svc.merge({ targetBranch: 'main', expectedTargetSha: target, sourceSha: sha, backup, message: 'merge 140' });
+      assert.equal(res.status, 'merged');
+      if (res.status !== 'merged') return;
+      assert.equal(git(sb.repo, 'rev-parse', 'main'), res.mergedSha);
+      assert.equal(git(sb.repo, 'rev-parse', 'HEAD'), target, 'user branch did not move');
+      assert.equal(git(sb.repo, 'symbolic-ref', '--short', 'HEAD'), 'user-feature');
+      assert.equal(readFileSync(path.join(sb.repo, 'user-wip.txt'), 'utf8'), 'uncommitted user work');
+      assert.equal(existsSync(path.join(sb.repo, 'side.txt')), false, 'merge result not written into the user tree');
+      assert.equal(existsSync(path.join(sb.worktrees, 'merge', 'side.txt')), true);
+      await svc.rollback({ targetBranch: 'main', mergedSha: res.mergedSha, restoreSha: target, backupRef: backup.ref });
+      assert.equal(git(sb.repo, 'rev-parse', 'main'), target);
+      assert.equal(existsSync(path.join(sb.repo, 'user-wip.txt')), true, 'rollback did not touch the user tree');
+    } finally {
+      git(sb.repo, 'clean', '-fdq');
+      git(sb.repo, 'checkout', '-q', 'main');
+      await svc.removeWorktree(w.path);
+    }
+  });
+
   it('never deletes protected branches or backups; policy denies dangerous requests', async () => {
     await assert.rejects(svc.deleteAgentBranch('main'), /non-agent/);
     await assert.rejects(svc.deleteAgentBranch('backup/pre-merge-x'), /non-agent/);

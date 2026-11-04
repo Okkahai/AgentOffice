@@ -50,7 +50,7 @@ Exceptional: `BLOCKED` (dependency failed), `FAILED`, `CONFLICT`, `CANCELLED`. `
 9. **Post-merge verification** on the merged tree. Success → `merge.success`, `COMPLETED`, worktree removed. Failure → `merge.verification_failed`, task `FAILED`; merged commit, backup, logs, review and diff are all kept.
 10. **Rollback** (`Orchestrator.rollback`) uses only persisted state: refuses unless the target still points at the merged commit, the tree is clean and the backup ref still equals the recorded sha; then `reset --hard <backup sha>`. Rollback is user-triggered, never silent.
 
-Known limitation: the merge happens in the user's main working tree, so it needs that tree clean and on the target branch. A dedicated merge worktree is a later option.
+The merge runs in a dedicated detached worktree at `<worktrees>/merge`, reset to the expected target commit each time (ignored files such as installed dependencies are kept). The target branch then moves from the expected sha to the merge commit: by `git merge --ff-only` in the worktree that has it checked out, which must be clean, or by a compare-and-swap `update-ref` when no worktree has it. Rollback moves it back the same way. Post-merge checks run on the merged commit in the merge worktree, so the user's own tree is never used for merging or verification.
 
 ## Protected operations
 

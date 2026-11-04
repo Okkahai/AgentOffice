@@ -240,7 +240,8 @@ export class Orchestrator {
   }
 
   async #postMerge(id: number, mergeId: number, mergedSha: string) {
-    const ok = await this.#runChecks(id, 'post-merge', this.git.root);
+    // Checks run on exactly the merged commit in the dedicated merge worktree, never in the user's tree.
+    const ok = await this.#runChecks(id, 'post-merge', await this.git.prepareMergeWorktree(mergedSha));
     if (ok) {
       this.store.updateMerge(mergeId, 'success', mergedSha);
       this.#move(id, 'COMPLETED');

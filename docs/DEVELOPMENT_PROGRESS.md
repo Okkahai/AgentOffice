@@ -28,7 +28,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Session states | PARTIAL | Running / exited / failed / timed out from real events. Interrupt, resume, retry and waiting-for-input are not exposed |
 | Multi-project workspace | NOT IMPLEMENTED | One repository per server process; the schema has no project column yet |
 | OS-level sandboxing, permission profiles | NOT IMPLEMENTED | Highest-priority safety gap before more unattended use |
-| Dedicated merge worktree | NOT IMPLEMENTED | Merges still run in the user's main working tree (must be clean and on the target branch) |
+| Dedicated merge worktree | VERIFIED | `git.test.ts`: merge and rollback while the user's tree is on another branch with uncommitted work; the branch moves by CAS ref update, or by fast-forward when a clean worktree has it checked out. Post-merge checks run on the merged commit in `<worktrees>/merge` |
 | Electron packaging, native notifications, installer | NOT IMPLEMENTED | IPC boundary designed in `architecture.md` |
 | GitHub integration | NOT IMPLEMENTED | |
 | Dev-server preview, agent profiles, usage tracking | NOT IMPLEMENTED | Phase 5 |
@@ -37,11 +37,10 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 ## Known security limitations
 - Agents are not OS-sandboxed. They run as the user with a scrubbed environment (`*_API_KEY`, `*_TOKEN`, `*_SECRET`, `PASSWORD` removed). Unattended flags (`--permission-mode acceptEdits`, `--full-auto`) widen what an agent may do inside its worktree.
 - The local server is loopback-only with a Host check and a per-run token for writes; any local process can still read state.
-- Merges touch the main working tree.
+- If the target branch is checked out somewhere, that tree must be clean and is fast-forwarded (or reset on rollback).
 
 ## Next
 1. OS-level sandboxing on Windows (restricted token / AppContainer evaluation) and permission profiles, before broader autonomy.
-2. Dedicated merge worktree, keeping every current merge guarantee and test.
 3. Real end-to-end run from the UI: goal, `ClaudePlanner`, Claude Code engineers, `ClaudeReviewer`, on a disposable repo, on Windows.
 4. Multi-project schema migration (project id on tasks and events, per-repository merge locks).
 5. Interactive sessions (input, interrupt, resume where the CLI supports it) and the attention items they produce.
