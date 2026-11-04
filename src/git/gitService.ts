@@ -128,6 +128,17 @@ export class GitService {
     return { files, patch, stat };
   }
 
+  /** Diff between two commits in the main repository (worktree may already be gone). Read-only. */
+  async diffCommits(baseSha: string, headSha: string): Promise<DiffInfo> {
+    for (const sha of [baseSha, headSha]) if (!/^[0-9a-f]{7,64}$/.test(sha)) throw new GitError(`Not a commit sha: ${sha}`, [], '', null);
+    const range = `${baseSha}..${headSha}`;
+    const files = (await this.run(['diff', '--name-status', range])).stdout.split('\n').filter(Boolean).map((l) => {
+      const [status, ...rest] = l.split('\t');
+      return { status: status!, path: rest.join('\t') };
+    });
+    return { files, patch: (await this.run(['diff', range])).stdout, stat: (await this.run(['diff', '--stat', range])).stdout };
+  }
+
   /** Stage everything in the task worktree and commit. Refuses empty commits and protected paths. */
   async commit(wtPath: string, message: string): Promise<string> {
     assertInside(this.worktreesDir, wtPath);

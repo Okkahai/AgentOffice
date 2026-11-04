@@ -52,3 +52,11 @@ describe('plan to merged code', () => {
     assert.equal(h.store.listTasks().length, 0);
   });
 });
+
+import { parseReview } from '../src/manager/claudeReviewer.ts';
+it('reviewer output is parsed strictly: malformed or contradictory output never approves', () => {
+  assert.equal(parseReview('```json\n{"approved": true, "blockingIssues": [], "warnings": ["nit"], "summary": "ok"}\n```').approved, true);
+  assert.equal(parseReview('{"approved": true, "blockingIssues": ["sql injection"], "summary": "x"}').approved, false);
+  assert.equal(parseReview('looks good to me!').approved, false);
+  assert.equal(parseReview('{"approved": "yes"}').approved, false);
+});

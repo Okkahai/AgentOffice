@@ -53,6 +53,21 @@ describe('ui server', () => {
     assert.equal((await get(srv.url + '/..%2f..%2fpackage.json')).status, 404);
   });
 
+  it('serves task detail and the committed diff from persisted evidence', async () => {
+    const d = JSON.parse((await get(srv.url + '/api/tasks/1/detail')).body);
+    assert.equal(d.task.id, 1);
+    assert.ok(d.verifications.length > 0 && d.backups.length === 1);
+    assert.ok(d.events.some((e: any) => e.type === 'merge.success'));
+    const diff = JSON.parse((await get(srv.url + '/api/tasks/1/diff')).body);
+    assert.equal(diff.source, 'commit');
+    assert.deepEqual(diff.files.map((f: any) => f.path), ['hi.txt']);
+  });
+
+  it('goal entry needs the token and an explicit Manager', async () => {
+    assert.equal((await get(srv.url + '/api/goal', {}, 'POST')).status, 403);
+    assert.equal((await get(srv.url + '/api/goal', { 'x-ao-token': srv.token }, 'POST')).status, 501);
+  });
+
   it('rollback through the UI uses the deterministic control plane', async () => {
     const r = await get(srv.url + '/api/tasks/1/rollback', { 'x-ao-token': srv.token }, 'POST');
     assert.equal(r.status, 200);

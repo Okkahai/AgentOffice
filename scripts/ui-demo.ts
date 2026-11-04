@@ -24,6 +24,14 @@ const agent = (file: string, secs: number) => [process.execPath, '-e', `
   console.log('reading repository…');
   const t=setInterval(()=>{ console.log('working '+(++i)+'/${secs}'); if(i>=${secs}){clearInterval(t);fs.writeFileSync('${file}','done\\n');console.log('wrote ${file}');} },1000);`];
 
+// Scripted Manager: same plan shape the real ClaudePlanner returns, file names made unique per goal.
+let goals = 0;
+const planner = { plan: async () => { const n = ++goals; return { summary: 'Add auth', tasks: [
+  { key: 'backend', title: 'Auth backend', description: 'Session tokens and password hashing', dependsOn: [], prompt: `backend${n}.txt|7` },
+  { key: 'frontend', title: 'Login UI', description: 'Login form and error states', dependsOn: [], prompt: `frontend${n}.txt|9` },
+  { key: 'integration', title: 'Integration', description: 'Wire the login form to the backend', dependsOn: ['backend', 'frontend'], prompt: `integration${n}.txt|4` },
+] }; } };
+
 const hub = new OutputHub();
 const orch = new Orchestrator({
   store: new Store(path.join(base, 'state.db')),
@@ -31,15 +39,17 @@ const orch = new Orchestrator({
   provider: new CommandProvider(), onAgentOutput: hub.push, maxParallel: 2,
   reviewer: { id: 'qa-reviewer', review: async () => { await new Promise((r) => setTimeout(r, 2000)); return { approved: true, blockingIssues: [], warnings: [], summary: 'scripted reviewer approves' }; } },
 });
-const srv = await startUiServer({ orch, hub, uiDir: path.resolve(import.meta.dirname, '../ui'), port: Number(process.argv[2] ?? 0) });
+const build = (p: string) => { const [f, s] = p.split('|'); return agent(f!, Number(s)); };
+let running: Promise<void> | null = null;
+const kick = () => { running ??= orch.runAll().finally(() => { running = null; }); return running; };
+const srv = await startUiServer({
+  orch, hub, uiDir: path.resolve(import.meta.dirname, '../ui'), port: Number(process.argv[2] ?? 0),
+  onGoal: async (goal) => { await new Promise((r) => setTimeout(r, 1500)); await planAndApply(orch, planner, goal, build); void kick(); },
+});
 console.log(`Agent Office UI: ${srv.url}   (demo repo: ${repo})`);
 
-const planner = { plan: async () => ({ summary: 'Add auth', tasks: [
-  { key: 'backend', title: 'Auth backend', description: '', dependsOn: [], prompt: 'backend.txt|7' },
-  { key: 'frontend', title: 'Login UI', description: '', dependsOn: [], prompt: 'frontend.txt|9' },
-  { key: 'integration', title: 'Integration', description: '', dependsOn: ['backend', 'frontend'], prompt: 'integration.txt|4' },
-] }) };
 await new Promise((r) => setTimeout(r, Number(process.env.UI_DEMO_DELAY ?? 4000))); // time to open the page
-await planAndApply(orch, planner, 'Add authentication', (p) => { const [f, s] = p.split('|'); return agent(f!, Number(s)); });
-await orch.runAll();
+orch.bus.emit('plan.started', { agentId: 'manager', payload: { goal: 'Add authentication' } });
+await planAndApply(orch, planner, 'Add authentication', build);
+await kick();
 console.log('all tasks finished; server stays up. Ctrl+C to stop.');

@@ -2,4 +2,3 @@ node_modules/
 *.db
 *.db-*
 .agent-office/
-ui/assets/limezu/*

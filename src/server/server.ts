@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -30,7 +31,11 @@ export class OutputHub {
   subscribe(cb: (taskId: number, chunk: string) => void) { this.#subs.add(cb); return () => this.#subs.delete(cb); }
 }
 
-export interface UiServerOptions { orch: Orchestrator; hub: OutputHub; uiDir: string; port?: number }
+export interface UiServerOptions {
+  orch: Orchestrator; hub: OutputHub; uiDir: string; port?: number;
+  /** Manager entry point. Absent means goal entry is unavailable (the UI says so instead of faking it). */
+  onGoal?: (goal: string) => Promise<unknown>;
+}
 
 export async function startUiServer(opts: UiServerOptions) {
   const { orch, hub, uiDir } = opts;
@@ -44,6 +49,9 @@ export async function startUiServer(opts: UiServerOptions) {
     try {
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res, state());
       if (req.method === 'GET' && url.pathname === '/api/events') return sse(req, res);
+      const detail = /^\/api\/tasks\/(\d+)\/(detail|diff)$/.exec(url.pathname);
+      if (req.method === 'GET' && detail) return json(res, detail[2] === 'detail' ? taskDetail(Number(detail[1])) : await taskDiff(Number(detail[1])));
+      if (req.method === 'POST' && url.pathname === '/api/goal') return await goal(req, res);
       if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/')) return await action(req, res, url);
       if (req.method === 'GET') return await serveStatic(res, url.pathname);
       res.writeHead(405).end();
@@ -56,7 +64,7 @@ export async function startUiServer(opts: UiServerOptions) {
   function state() {
     const s = orch.store;
     return {
-      token, targetBranch: orch.targetBranch,
+      token, targetBranch: orch.targetBranch, repo: path.basename(orch.git.root), goalEntry: !!opts.onGoal,
       tasks: s.listTasks().map((t) => ({ ...t, dependsOn: s.deps(t.id) })),
       backups: s.backups(), merges: s.merges(),
       reviews: s.listTasks().flatMap((t) => s.reviews(t.id).map((r) => ({ ...r, task_id: t.id }))),
@@ -73,6 +81,36 @@ export async function startUiServer(opts: UiServerOptions) {
     const unsubOut = hub.subscribe((taskId, chunk) => send('output', { taskId, chunk }));
     const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
     req.on('close', () => { unsub(); unsubOut(); clearInterval(ping); });
+  }
+
+  function taskDetail(id: number) {
+    const s = orch.store, task = s.getTask(id);
+    if (!task) return { error: 'no such task' };
+    return {
+      task, dependsOn: s.deps(id), verifications: s.verifications(id), reviews: s.reviews(id),
+      backups: s.backups(id), merge: s.latestMerge(id) ?? null, events: s.events(id).map(toEvent),
+    };
+  }
+
+  /** Live worktree diff while the task runs, otherwise the committed range; never fabricated. */
+  async function taskDiff(id: number) {
+    const t = orch.store.getTask(id);
+    if (!t?.base_sha) return { files: [], patch: '', stat: '', source: 'none' };
+    if (t.worktree_path && existsSync(t.worktree_path)) return { ...(await orch.git.getDiff(t.worktree_path, t.base_sha)), source: 'worktree' };
+    if (t.commit_sha) return { ...(await orch.git.diffCommits(t.base_sha, t.commit_sha)), source: 'commit' };
+    return { files: [], patch: '', stat: '', source: 'none' };
+  }
+
+  async function goal(req: http.IncomingMessage, res: http.ServerResponse) {
+    if (req.headers['x-ao-token'] !== token) return void res.writeHead(403).end('bad token');
+    if (!opts.onGoal) return void res.writeHead(501).end('goal entry not configured');
+    let body = '';
+    for await (const c of req) { body += c; if (body.length > 8_000) return void res.writeHead(413).end(); }
+    const text = String(JSON.parse(body || '{}').goal ?? '').trim();
+    if (!text) return void res.writeHead(400).end('empty goal');
+    orch.bus.emit('plan.started', { agentId: 'manager', payload: { goal: text } });
+    opts.onGoal(text).catch((e) => orch.bus.emit('plan.failed', { agentId: 'manager', payload: { goal: text, reason: (e as Error).message } }));
+    json(res, { ok: true });
   }
 
   async function action(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
