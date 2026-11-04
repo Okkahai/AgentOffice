@@ -48,6 +48,7 @@ export async function startUiServer(opts: UiServerOptions) {
       if (req.method === 'GET') return await serveStatic(res, url.pathname);
       res.writeHead(405).end();
     } catch (e) {
+      if (res.headersSent) { console.error('ui server:', (e as Error).message); res.end(); return; }
       res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: (e as Error).message }));
     }
   });
@@ -91,7 +92,7 @@ export async function startUiServer(opts: UiServerOptions) {
   async function serveStatic(res: http.ServerResponse, pathname: string) {
     const vendor = VENDOR[pathname];
     if (vendor) { // fixed allowlist, so no path traversal is possible
-      try { return void res.writeHead(200, { 'content-type': vendor[1] }).end(await readFile(path.resolve(uiDir, '../node_modules', vendor[0]))); } catch { return void res.writeHead(404).end(); }
+      try { const body = await readFile(path.resolve(uiDir, '../node_modules', vendor[0])); return void res.writeHead(200, { 'content-type': vendor[1] }).end(body); } catch { return void res.writeHead(404).end(); }
     }
     const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
     let file: string;

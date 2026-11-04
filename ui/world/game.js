@@ -5,7 +5,11 @@ import { buildGrid, findPath } from './nav.js';
 import { fitZoom, clampCam, origin, zoomAt } from './camera.js';
 
 const SPEED = 40;                 // native px per second (art bible)
-const FRAME = { w: 32, h: 48, ax: 16, ay: 45 };
+const FRAME = { w: 16, h: 32, ax: 8, ay: 31 };                 // LimeZu character cell, feet anchor
+const CHARS = ['Alex', 'Adam', 'Amelia', 'Bob'];
+const DIR = { right: 0, up: 6, left: 12, down: 18 };            // first of 6 frames per direction in the idle (row 1) and run (row 2) strips
+const ART = '/assets/limezu';
+const FLOOR = [176, 128, 16, 16], WALL = [1, 86, 16, 25];       // Room_Builder_Office_16x16.png
 const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
 
 export class Game {
@@ -16,14 +20,11 @@ export class Game {
     this.grid = buildGrid(); this.last = 0; this.ready = false;
   }
   async load() {
-    const [meta, ...imgs] = await Promise.all([
-      fetch('/assets/chars/meta.json').then((r) => r.json()),
-      ...['desk', 'rack', 'plant', 'shelf', 'frame', 'floor', 'wall'].map((n) => load(`/assets/world/${n}.png`)),
-      ...[0, 1, 2].map((v) => load(`/assets/chars/engineer-${v}.png`)),
+    const [office, rooms, ...sheets] = await Promise.all([
+      load(`${ART}/office/Modern_Office_16x16.png`), load(`${ART}/office/Room_Builder_Office_16x16.png`),
+      ...CHARS.map((n) => load(`${ART}/chars/${n}_16x16.png`)),
     ]);
-    this.meta = meta;
-    this.img = Object.fromEntries(['desk', 'rack', 'plant', 'shelf', 'frame', 'floor', 'wall'].map((n, i) => [n, imgs[i]]));
-    this.sheets = imgs.slice(7); this.ready = true;
+    this.office = office; this.rooms = rooms; this.sheets = sheets; this.ready = true;
     this.resize(); this.fit();
     addEventListener('resize', () => this.resize());
     this.bindInput();
@@ -39,7 +40,7 @@ export class Game {
   }
   setZoom(z) { this.z = Math.min(5, Math.max(1, z)); this.k = Math.max(1, Math.round(this.z * this.dpr)); }
   fit() { this.setZoom(fitZoom(this.vw, this.vh, WORLD)); this.cam = { x: WORLD.w / 2, y: WORLD.h / 2 }; this.camTarget = null; }
-  focus(id) { const a = this.actors.get(id); if (a) { this.camTarget = { x: a.x, y: a.y - 20 }; if (this.z < 3) this.setZoom(3); } }
+  focus(id) { const a = this.actors.get(id); if (a) { this.camTarget = { x: a.x, y: a.y - 10 }; if (this.z < 3) this.setZoom(3); } }
   select(id) { this.selected = id; }
 
   // ---- input ----
@@ -75,7 +76,7 @@ export class Game {
   hit(p) {
     const w = this.worldPoint(p);
     const inR = (r) => w.x >= r.x && w.x < r.x + r.w && w.y >= r.y && w.y < r.y + r.h;
-    for (const a of [...this.actors.values()].sort((x, y) => y.y - x.y)) if (inR({ x: a.x - 10, y: a.y - 42, w: 20, h: 44 })) return { kind: 'agent', id: a.id };
+    for (const a of [...this.actors.values()].sort((x, y) => y.y - x.y)) if (inR({ x: a.x - 8, y: a.y - 24, w: 16, h: 26 })) return { kind: 'agent', id: a.id };
     for (const d of DESKS) { if (inR(d)) { const who = [...this.actors.values()].find((a) => a.desk === d.id && a.atSeat); return { kind: inR(d.monitor) ? 'monitor' : 'desk', desk: d.id, id: who?.id ?? null }; } }
     if (inR(DECOR.rack)) return { kind: 'rack' };
     return null;
@@ -93,7 +94,7 @@ export class Game {
       if (!m) {
         const stale = a.assignedAt && now - Date.parse(a.assignedAt) > 8000;   // replayed history: already at the desk
         const start = stale && seat ? seat : ENTRANCE;
-        m = { id: a.id, x: start.x, y: start.y, path: [], desk: deskIdx, atSeat: !!(stale && seat), wait: 0, facing: 'down', flip: false, anim: 'idle', animT: now, celebrated: !!a.done, until: 0, variant: ((a.taskId ?? i + 1) - 1) % 3 };
+        m = { id: a.id, x: start.x, y: start.y, path: [], desk: deskIdx, atSeat: !!(stale && seat), wait: 0, facing: 'down', anim: 'idle', animT: now, celebrated: !!a.done, until: 0, variant: ((a.taskId ?? i + 1) - 1) % CHARS.length };
         this.actors.set(a.id, m);
       }
       if (m.desk !== deskIdx) { m.desk = deskIdx; m.atSeat = false; m.path = []; m.dest = null; }
@@ -114,13 +115,11 @@ export class Game {
         const t = m.path[0], dx = t.x - m.x, dy = t.y - m.y, d = Math.hypot(dx, dy), step = SPEED * dt;
         if (d <= step) { m.x = t.x; m.y = t.y; m.path.shift(); } else { m.x += dx / d * step; m.y += dy / d * step; }
         moving = true;
-        const ax = Math.abs(dx), ay = Math.abs(dy);   // hysteresis so diagonal steps do not flicker between views
-        if (ax > ay * 1.5 || (m.facing !== 'side' && m.facing !== 'up' && m.facing !== 'down')) { m.facing = 'side'; m.flip = dx < 0; }
-        else if (ay > ax * 1.5) m.facing = dy < 0 ? 'up' : 'down';
-        else if (m.facing === 'side') m.flip = dx < 0;
+        const ax = Math.abs(dx), ay = Math.abs(dy), horiz = m.facing === 'left' || m.facing === 'right';   // hysteresis so diagonal steps do not flicker
+        if (ax > ay * 1.5 || (horiz && ax > ay / 1.5)) m.facing = dx < 0 ? 'left' : 'right'; else m.facing = dy < 0 ? 'up' : 'down';
       }
-      if (!m.path.length && m.dest === 'desk' && seat) { m.x = seat.x; m.y = seat.y; m.atSeat = true; m.facing = 'down'; }
-      const anim = a.state === 'failed' ? 'failure' : now < m.until ? 'success' : moving ? `walk_${m.facing}` : m.atSeat && a.state === 'coding' ? 'type' : 'idle';
+      if (!m.path.length && m.dest === 'desk' && seat) { m.x = seat.x; m.y = seat.y; m.atSeat = true; m.facing = 'up'; }
+      const anim = a.state === 'failed' ? 'failure' : now < m.until ? 'success' : moving ? 'walk' : m.atSeat && a.state === 'coding' ? 'type' : 'idle';
       if (anim !== m.anim) { m.anim = anim; m.animT = now; }
       m.state = a.state;
     });
@@ -145,18 +144,14 @@ export class Game {
     const g = this.ctx, k = this.k, { ox, oy } = origin(this.cam, this.canvas.width, this.canvas.height, k);
     g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false; g.fillStyle = '#0a0807'; g.fillRect(0, 0, this.canvas.width, this.canvas.height);
     g.setTransform(k, 0, 0, k, ox, oy);
-    const I = this.img;
-    for (let y = WORLD.wallH; y < WORLD.h; y += 24) for (let x = 0; x < WORLD.w; x += 32) g.drawImage(I.floor, x, y);
-    for (let y = 0; y < WORLD.wallH; y += 24) for (let x = 0; x < WORLD.w; x += 32) g.drawImage(I.wall, x, y);
-    g.fillStyle = '#16110f'; g.fillRect(0, WORLD.wallH - 2, WORLD.w, 2);
-    g.drawImage(I.frame, DECOR.frame.x, DECOR.frame.y); g.drawImage(I.shelf, DECOR.shelf.x, DECOR.shelf.y); g.drawImage(I.rack, DECOR.rack.x, DECOR.rack.y);
-    // entrance mat
-    g.fillStyle = '#3b2a22'; g.fillRect(ENTRANCE.x - 18, WORLD.h - 12, 36, 8); g.fillStyle = '#55392a'; g.fillRect(ENTRANCE.x - 16, WORLD.h - 11, 32, 1);
+    const spr = (img, r, x, y) => g.drawImage(img, r[0], r[1], r[2], r[3], x, y, r[2], r[3]);
+    for (let y = WORLD.wallH; y < WORLD.h; y += 16) for (let x = 0; x < WORLD.w; x += 16) spr(this.rooms, FLOOR, x, y);
+    for (let x = 0; x < WORLD.w; x += 16) { spr(this.rooms, WALL, x, WORLD.wallH - 50); spr(this.rooms, WALL, x, WORLD.wallH - 25); }
+    for (const k of ['board', 'poster', 'pin', 'photo', 'shelf', 'rack']) spr(this.office, DECOR[k].s, DECOR[k].x, DECOR[k].y);
     // depth-sorted things
-    const items = [];
-    const seated = new Map([...this.actors.values()].filter((a) => a.atSeat).map((a) => [a.desk, a]));
+    const items = [], seated = new Map([...this.actors.values()].filter((a) => a.atSeat).map((a) => [a.desk, a]));
     for (const d of DESKS) items.push({ base: d.base, draw: () => this.drawDesk(d, seated.get(d.id), now) });
-    items.push({ base: DECOR.plant.base, draw: () => g.drawImage(I.plant, DECOR.plant.x, DECOR.plant.y) }, { base: DECOR.plant2.base, draw: () => g.drawImage(I.plant, DECOR.plant2.x, DECOR.plant2.y) });
+    for (const k of ['plant', 'plant2', 'cooler', 'sofa']) items.push({ base: DECOR[k].base, draw: () => spr(this.office, DECOR[k].s, DECOR[k].x, DECOR[k].y) });
     for (const a of this.actors.values()) items.push({ base: a.y, draw: () => this.drawActor(a, now) });
     items.sort((p, q) => p.base - q.base).forEach((it) => it.draw());
     // overlays in device pixels: bubbles + labels
@@ -164,22 +159,29 @@ export class Game {
     for (const a of this.actors.values()) this.drawBubble(a, now, ox, oy);
   }
   drawDesk(d, who, now) {
-    const g = this.ctx; g.drawImage(this.img.desk, d.x, d.y);
-    const m = d.monitor, live = who && who.state === 'coding' && who.anim === 'type';
-    g.fillStyle = live ? (Math.floor(now / 350) % 2 ? 'rgba(95,154,85,0.28)' : 'rgba(95,154,85,0.08)') : 'rgba(13,11,10,0.6)'; g.fillRect(m.x, m.y, m.w, m.h);
+    const g = this.ctx, o = this.office, [dx, dy, dw, dh] = d.desk, [kx, ky, kw, kh] = d.kit;
+    g.drawImage(o, dx, dy, dw, dh, d.x, d.y, dw, dh); g.drawImage(o, kx, ky, kw, kh, d.x + 2, d.y - 3, kw, kh);
+    if (!(who && who.state === 'coding' && who.anim === 'type')) return;
+    const m = d.monitor, step = Math.floor(now / 220);       // scrolling green "code" lines on the screen, only while really typing
+    g.fillStyle = '#0d1f10'; g.fillRect(m.x, m.y, m.w, m.h); g.fillStyle = '#7ddc7a';
+    for (let r = 0; r < m.h; r += 2) g.fillRect(m.x + 1, m.y + r, 2 + ((step * 7 + r * 5 + d.id) % (m.w - 3)), 1);
   }
   drawActor(a, now) {
-    const g = this.ctx, row = this.meta.rows[a.anim] ?? this.meta.rows.idle, f = Math.floor((now - a.animT) / 1000 * row.fps) % row.frames;
-    const sx = f * FRAME.w, sy = row.row * FRAME.h, x = Math.round(a.x) - FRAME.ax, y = Math.round(a.y) - FRAME.ay, sheet = this.sheets[a.variant];
-    if (a.id === this.selected) { g.fillStyle = '#f2b451'; const cx = Math.round(a.x), cy = Math.round(a.y); for (let i = -12; i <= 12; i++) { const j = Math.round(Math.sqrt(1 - (i / 12) ** 2) * 4); g.fillRect(cx + i, cy + 1 + j, 1, 1); g.fillRect(cx + i, cy + 1 - j, 1, 1); } }
-    if (a.flip) { g.save(); g.translate(Math.round(a.x) * 2, 0); g.scale(-1, 1); g.drawImage(sheet, sx, sy, FRAME.w, FRAME.h, x, y, FRAME.w, FRAME.h); g.restore(); }
-    else g.drawImage(sheet, sx, sy, FRAME.w, FRAME.h, x, y, FRAME.w, FRAME.h);
+    const g = this.ctx, t = (now - a.animT) / 1000, sheet = this.sheets[a.variant], dir = DIR[a.facing] ?? DIR.down;
+    const row = a.anim === 'walk' ? 2 : 1, fps = a.anim === 'walk' ? 9 : a.anim === 'type' ? 7 : 4, f = dir + Math.floor(t * fps) % 6;
+    let x = Math.round(a.x) - FRAME.ax, y = Math.round(a.y) - FRAME.ay;
+    if (a.anim === 'success') y -= Math.round(Math.abs(Math.sin(t * 9)) * 4);                 // hop
+    else if (a.anim === 'failure') x += Math.floor(t * 16) % 2 ? 1 : -1;                      // shiver
+    const cx = Math.round(a.x), cy = Math.round(a.y);
+    g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(cx - 5, cy - 1, 10, 2);
+    if (a.id === this.selected) { g.fillStyle = '#f2b451'; for (let i = -9; i <= 9; i++) { const j = Math.round(Math.sqrt(1 - (i / 9) ** 2) * 3); g.fillRect(cx + i, cy + j, 1, 1); g.fillRect(cx + i, cy - j, 1, 1); } }
+    g.drawImage(sheet, f * FRAME.w, row * FRAME.h, FRAME.w, FRAME.h, x, y, FRAME.w, FRAME.h);
   }
   drawBubble(a, now, ox, oy) {
     const b = this.scene.bubbles[a.id]; if (!b || now - Date.parse(b.ts) > 6000) return;
     const g = this.ctx, k = this.k, txt = b.text.length > 26 ? b.text.slice(0, 25) + '…' : b.text;
     g.font = `bold ${6 * k}px monospace`; const w = g.measureText(txt).width + 6 * k, h = 10 * k;
-    const x = Math.round(ox + (a.x - w / k / 2) * k), y = Math.round(oy + (a.y - 58) * k);
+    const x = Math.round(ox + (a.x - w / k / 2) * k), y = Math.round(oy + (a.y - 30) * k);
     g.fillStyle = '#d9ccb0'; g.fillRect(x, y - h, Math.round(w), h); g.fillStyle = '#d9ccb0'; g.fillRect(x + Math.round(w / 2) - k, y, 2 * k, 2 * k);
     g.fillStyle = '#16110f'; g.fillText(txt, x + 3 * k, y - 3 * k);
   }

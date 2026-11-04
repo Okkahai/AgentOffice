@@ -16,7 +16,7 @@ test('every desk seat is reachable from the entrance and the path avoids obstacl
 });
 
 test('no path is invented into a blocked cell', () => {
-  assert.equal(findPath(g, ENTRANCE, { x: DESKS[0].x + 10, y: DESKS[0].y + 26 }), null);
+  assert.equal(findPath(g, ENTRANCE, { x: DESKS[0].x + 10, y: DESKS[0].y + 10 }), null);
 });
 
 test('the walk to a desk is a real walk, not a teleport', () => {

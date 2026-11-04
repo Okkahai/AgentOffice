@@ -1,53 +1,24 @@
-# Agent Office art bible (v0, vertical slice)
+# Art bible
 
-Every sprite and every environment asset must satisfy this document before it enters `ui/assets/world` or `ui/assets/chars`.
-The rules are checked by `test/art.test.ts` where they can be automated. Assets that break a rule are normalized or rejected, never
-patched at runtime with CSS filters.
+Every sprite and environment asset in the world view must satisfy this document.
 
-## Native resolution and scaling
-| Item | Rule |
+## Rendering
+| Rule | Value |
 |---|---|
-| Native reference viewport | 480 x 270 native pixels (16:9). The world is larger than the viewport and scrolls. |
-| Render scale | Integer only. `k = round(zoom * devicePixelRatio)`, zoom in {1..5}. Canvas backing store equals CSS size times DPR. |
-| Sprite drawing | `imageSmoothingEnabled = false`, sprites drawn at integer world coordinates, never fractional scale or rotation. |
-| Camera | Position stored as a float, applied as integer device pixels, so pans never blur. |
-| CSS | `image-rendering: pixelated` on the canvas. No CSS scaling of sprites. |
+| Native pixel density | 16 px tiles (LimeZu Modern Interiors / Modern Office, 16x16 variants). One density everywhere, no resizing in the engine. |
+| Characters | 16 x 32 cell (about 22 px of figure), feet anchor at (8, 31). Idle and run strips with 6 frames per direction (right, up, left, down). |
+| Reference viewport | 480 x 270 native px, integer scale `k = round(zoom * DPR)`, zoom 1..5. |
+| Sprite drawing | `imageSmoothingEnabled = false`, integer world coordinates, no rotation. Canvas has `image-rendering: pixelated`. |
+| Camera | Float position, applied as whole device pixels. |
+| Perspective | Oblique 3/4 top-down, light from the upper left. Depth sorting by foot y. |
+| Walk speed | 40 px/s, A* on an 8 px grid. |
 
-## Perspective and light
-- Oblique 3/4 top-down (RPG "front + top" view). Furniture shows its front face and top surface. Floors are 32 x 24 tiles (4:3).
-- Key light from the upper left, warm. Shadows fall down and right. One lower-contrast cool fill from the right.
-- Depth ordering: everything is sorted by its foot / base y.
+## Look
+Dark floor carpet, lavender brick wall, warm wood desks, cool blue screens. Screens and typing glow are the only bright accents, so activity reads at a glance.
+New props come from the same two packs. Do not mix in art from other authors: other packs differ in scale and palette.
 
-## Scale
-- 1 metre is about 26 native pixels.
-- Character frame 32 x 48, figure about 44 px tall (1.7 m), feet anchored at frame (16, 45).
-- Desk with monitor: 38 x 32. Server rack: 27 x 48. Plant: 18 x 25. Wall shelf: 44 x 38. Door opening: 32 x 44.
-- Walking speed 40 native px/s (about 1.5 m/s).
+## What is drawn in code
+Only state feedback: the scrolling green lines on a screen while an agent really types, the selection ring, the shadow, the success hop and the failure shiver.
 
-## Pixel density and outline
-- One pixel density everywhere: no sprite may be authored at another scale and resized in the engine.
-- 1 px dark warm outline on characters. Furniture keeps its own darker edge pixels; no anti-aliasing, alpha is 0 or 255.
-- Three tones per material (shadow, base, light) plus one highlight pixel where it helps.
-
-## Palette
-One master palette of at most 48 colors, defined in `tools/art/palette.json` and mirrored in `scripts/gen-sprites.ts`.
-Dark, warm, earthy: wood browns, brick reds, cool dark stone for floors, muted blue/green/purple cloth, skin ramp,
-amber for fire and light. Accents are rare and semantic: amber = active/merge, green = ok, red = failure.
-Generated art is palette-normalized (nearest colour) before import.
-
-## Characters
-- Human proportions: head 12 px, torso 15 px, legs 14 px.
-- Roles are told apart by clothing, hair and accessories, never by big labels. Engineer: hoodie, messy hair. Manager: blazer, hair bun.
-  QA: lab coat, glasses.
-- Views: front, back, side (left is the mirrored right). Animations: idle, walk, type, think, talk, success, failure.
-- FPS: idle 2, walk 8 (4 frames), type 6, think 2, talk 4, success 4, failure 4.
-- Sheet layout is described by `ui/assets/chars/meta.json`.
-
-## Import pipeline
-1. GENERATE (ElevenLabs or code). 2. INSPECT. 3. REMOVE BACKGROUND. 4. CROP. 5. SCALE to native size (box filter).
-6. PALETTE NORMALIZE. 7. PIXEL CLEANUP (alpha threshold, lone-pixel removal). 8. SLICE. 9. VALIDATE (`npm test`). 10. IMPORT.
-Tools: `tools/art/build_world.py` (furniture and floors from `assets/src/furniture.png`), `scripts/gen-sprites.ts` (character sheets).
-
-## Rejected on sight
-Mixed pixel densities, anti-aliased edges, sprites with more than 48 colours, characters not 32 x 48, furniture that breaks the
-scale table, glow or blur baked in to hide a mismatch.
+## Source and licence
+See `docs/limezu-assets.md`. The pack files are not committed.

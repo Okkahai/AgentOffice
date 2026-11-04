@@ -8,7 +8,10 @@ const scene = initialOffice();
 const app = { data: { tasks: [], output: {}, token: '', targetBranch: '' }, events: [], selected: null, term: null, termTask: null };
 
 const game = new Game($('#world'), { onClick: (h, dbl) => onWorldClick(h, dbl) });
-await game.load();
+try { await game.load(); } catch (e) {
+  document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;inset:auto 16px 16px 16px;margin:0;padding:12px;background:#16110f;color:#f2b451;font:13px monospace;white-space:pre-wrap">Art pack missing (${esc(e.message)}). Unzip the LimeZu packs into ui/assets/limezu, see docs/limezu-assets.md</pre>`);
+  throw e;
+}
 game.sync(scene);
 
 async function refresh() {
