@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 55/55 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
+Last updated 2026-11-04. Evidence: `npm test` 56/56 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
 
 ## Feature inventory
 
@@ -25,7 +25,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Diff viewer | PARTIAL | Unified and side-by-side views with old/new line numbers, find in diff (Enter cycles hits), file list, live worktree or committed range (`server.test.ts`, `parseDiff` in `ui-model.test.ts`). No syntax highlighting yet |
 | Terminal | PARTIAL | Real PTY output, read-only. Agents run one-shot non-interactively, so input, resize to the PTY and search are not wired |
 | Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). Opt-in browser notifications for new items while the window is unfocused (enable from Ctrl+K), checked in Chromium with a refused merge. No permission or input requests yet (no provider reports them) |
-| Session states | PARTIAL | Running / exited / failed / timed out from real events. Interrupt, resume, retry and waiting-for-input are not exposed |
+| Session states | PARTIAL | Running / exited / failed / timed out from real events. Retry of failed, conflicted or blocked tasks (re-queues tasks blocked on it, refused while a merge is still on the target) is in the inspector (`orchestrator.test.ts`, `server.test.ts`, checked in Chromium). Interrupt, resume and waiting-for-input are not exposed |
 | Multi-project workspace | VERIFIED | `npm start -- <repo> <repo> ...`: one Orchestrator per repository (own state.db, worktrees, merge lock), `?project=` on every API route, project switcher in the sidebar and Ctrl+K (`server.test.ts`). Run end to end on Linux with two disposable repos and a stub `claude`: both goals planned, 4 verified merges, the user's branch and uncommitted file in one repo untouched |
 | OS-level sandboxing, permission profiles | NOT IMPLEMENTED | Highest-priority safety gap before more unattended use |
 | Dedicated merge worktree | VERIFIED | `git.test.ts`: merge and rollback while the user's tree is on another branch with uncommitted work; the branch moves by CAS ref update, or by fast-forward when a clean worktree has it checked out. Post-merge checks run on the merged commit in `<worktrees>/merge` |

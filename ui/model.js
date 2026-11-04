@@ -67,6 +67,7 @@ export function describe(e, title) {
     case 'task.completed': return `completed${t}`;
     case 'task.failed': return p.reason ?? 'failed';
     case 'task.blocked': return `blocked by #${p.dependency}`;
+    case 'task.retried': return p.requestedFor === e.taskId ? 'retried by the user' : `re-queued with #${p.requestedFor}`;
     case 'agent.spawned': return `process started${p.pid ? ` (pid ${p.pid})` : ''}`;
     case 'agent.coding': return 'agent working in its worktree';
     case 'agent.completed': return 'agent process exited 0';

@@ -51,6 +51,7 @@ describe('ui server', () => {
     assert.equal((await get(srv.url + '/api/tasks/1/cancel', {}, 'POST')).status, 403);
     assert.equal((await get(srv.url + '/api/tasks/1/cancel', { 'x-ao-token': 'wrong' }, 'POST')).status, 403);
     assert.equal((await get(srv.url + '/..%2f..%2fpackage.json')).status, 404);
+    assert.equal((await get(srv.url + '/api/tasks/1/retry', { 'x-ao-token': srv.token }, 'POST')).status, 409, 'a completed task cannot be retried');
   });
 
   it('serves task detail and the committed diff from persisted evidence', async () => {

@@ -109,6 +109,29 @@ export class Orchestrator {
     this.bus.emit('message.sent', { taskId: m.taskId, agentId: m.sender, payload: { to: m.recipient } });
   }
 
+  /**
+   * Explicit user retry of a FAILED, CONFLICT or BLOCKED task: back to QUEUED with a clean slate, plus every task
+   * BLOCKED on it. Refused while a merge of the task is still on the target (roll it back first).
+   */
+  retry(id: number): number[] {
+    const t = this.store.getTask(id);
+    if (!t || !['FAILED', 'CONFLICT', 'BLOCKED'].includes(t.status)) throw new Error(`Task ${id} is not failed, conflicted or blocked`);
+    const m = this.store.latestMerge(id);
+    if (m && ['success', 'verification_failed'].includes(m.status)) throw new Error(`Task ${id} is merged into ${this.targetBranch}; roll it back before retrying`);
+    const requeue = [id];
+    for (let i = 0; i < requeue.length; i++) {
+      for (const d of this.store.listTasks()) {
+        if (d.status === 'BLOCKED' && !requeue.includes(d.id) && this.store.deps(d.id).includes(requeue[i]!)) requeue.push(d.id);
+      }
+    }
+    for (const q of requeue) {
+      this.#cancelled.delete(q);
+      this.#move(q, 'QUEUED', { failure_reason: null, commit_sha: null, verification_status: 'pending', review_status: 'pending' });
+      this.#emit('task.retried', q, { requestedFor: id });
+    }
+    return requeue;
+  }
+
   /** Deterministic rollback from persisted state only. */
   async rollback(taskId: number): Promise<void> {
     const merge = this.store.latestMerge(taskId);
@@ -235,7 +258,10 @@ export class Orchestrator {
     const merge = this.store.createMerge(id, row.id);
     this.#emit('git.merge_started', id, { source: t.commit_sha, target: targetSha });
 
-    const res = await this.git.merge({ targetBranch: this.targetBranch, expectedTargetSha: targetSha, sourceSha: t.commit_sha!, backup, message: `Merge task ${id}: ${t.title}` });
+    let res;
+    try {
+      res = await this.git.merge({ targetBranch: this.targetBranch, expectedTargetSha: targetSha, sourceSha: t.commit_sha!, backup, message: `Merge task ${id}: ${t.title}` });
+    } catch (e) { this.store.updateMerge(merge.id, 'aborted'); throw e; } // a refused precondition leaves the target unchanged
     if (res.status === 'conflict') { this.store.updateMerge(merge.id, 'conflict'); return this.#conflict(id); }
     this.store.updateMerge(merge.id, 'merging', res.mergedSha);
     this.#emit('git.merge_completed', id, { mergedSha: res.mergedSha });

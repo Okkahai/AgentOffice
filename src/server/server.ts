@@ -35,6 +35,8 @@ export interface ProjectHandle {
   orch: Orchestrator; hub: OutputHub;
   /** Manager entry point. Absent means goal entry is unavailable (the UI says so instead of faking it). */
   onGoal?: (goal: string) => Promise<unknown>;
+  /** Starts the project's runner after a retry re-queued tasks. */
+  kick?: () => void;
 }
 
 export interface UiServerOptions extends Partial<ProjectHandle> {
@@ -48,7 +50,7 @@ type Project = ProjectHandle & { id: string };
 export async function startUiServer(opts: UiServerOptions) {
   const { uiDir } = opts;
   const projects: Project[] = [];
-  for (const h of opts.projects ?? [{ orch: opts.orch!, hub: opts.hub!, onGoal: opts.onGoal }]) {
+  for (const h of opts.projects ?? [{ orch: opts.orch!, hub: opts.hub!, onGoal: opts.onGoal, kick: opts.kick }]) {
     const base = path.basename(h.orch.git.root).toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'repo';
     let id = base;
     for (let n = 2; projects.some((p) => p.id === id); n++) id = `${base}-${n}`;
@@ -139,12 +141,14 @@ export async function startUiServer(opts: UiServerOptions) {
     json(res, { ok: true });
   }
 
-  async function action({ orch }: Project, req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+  async function action({ orch, kick }: Project, req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     if (req.headers['x-ao-token'] !== token) return void res.writeHead(403).end('bad token');
-    const m = /^\/api\/tasks\/(\d+)\/(cancel|rollback)$/.exec(url.pathname);
+    const m = /^\/api\/tasks\/(\d+)\/(cancel|rollback|retry)$/.exec(url.pathname);
     if (!m) return void res.writeHead(404).end();
     const id = Number(m[1]);
-    if (m[2] === 'cancel') await orch.cancel(id); else await orch.rollback(id);
+    if (m[2] === 'cancel') await orch.cancel(id);
+    else if (m[2] === 'rollback') await orch.rollback(id);
+    else { try { orch.retry(id); } catch (e) { return void res.writeHead(409).end((e as Error).message); } kick?.(); }
     json(res, { ok: true });
   }
 

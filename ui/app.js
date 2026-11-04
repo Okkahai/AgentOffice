@@ -247,13 +247,14 @@ function renderInspector(resetTab) {
   $('#inspector').hidden = !t;
   if (!t) return;
   const merge = d.merge, canCancel = !['COMPLETED', 'CANCELLED', 'FAILED', 'CONFLICT'].includes(t.status), canRollback = merge && ['success', 'verification_failed'].includes(merge.status);
+  const canRetry = ['FAILED', 'CONFLICT', 'BLOCKED'].includes(t.status) && !canRollback;
   const s = agentState(app.events, t.id);
   $('#insp-head').innerHTML = `<div class="t"><b>#${t.id} ${esc(t.title)}</b>${statusTag(t.status)}</div>
     <dl class="kv"><dt>agent</dt><dd>${esc(t.assigned_agent ?? '-')} ${t.assigned_agent ? tag(s.label, s.tone) : ''}</dd>
     <dt>branch</dt><dd title="${esc(t.branch)}">${esc(t.branch ?? '-')}</dd><dt>worktree</dt><dd title="${esc(t.worktree_path)}">${esc(t.worktree_path ?? '-')}</dd>
     <dt>commits</dt><dd>${short(t.base_sha) || '-'} → ${short(t.commit_sha) || '-'}</dd><dt>depends on</dt><dd>${d.dependsOn.map((x) => `#${x}`).join(' ') || '-'}</dd>
     ${t.failure_reason ? `<dt>reason</dt><dd style="color:var(--err)" title="${esc(t.failure_reason)}">${esc(t.failure_reason)}</dd>` : ''}</dl>
-    <div class="insp-actions">${canCancel ? '<button class="btn danger" data-act="cancel">Cancel task</button>' : ''}${canRollback ? '<button class="btn danger" data-act="rollback">Roll back merge</button>' : ''}<button class="btn" data-cmd="close-inspector">Close</button></div>`;
+    <div class="insp-actions">${canRetry ? '<button class="btn" data-act="retry">Retry</button>' : ''}${canCancel ? '<button class="btn danger" data-act="cancel">Cancel task</button>' : ''}${canRollback ? '<button class="btn danger" data-act="rollback">Roll back merge</button>' : ''}<button class="btn" data-cmd="close-inspector">Close</button></div>`;
   for (const b of document.querySelectorAll('#insp-tabs button')) b.classList.toggle('on', b.dataset.tab === app.tab);
   const showTerm = app.tab === 'terminal';
   $('#term-wrap').hidden = !showTerm; $('#insp-pane').hidden = showTerm;
@@ -316,7 +317,7 @@ function paneReview(d) {
     return `<div class="finding">${tag(r.approved ? 'APPROVED' : 'BLOCKED', r.approved ? 'ok' : 'err')} <span class="mono">${esc(r.reviewer)}</span><div class="dim" style="margin-top:4px">${esc(r.summary)}</div>${b.map((x) => `<div style="color:var(--err)">✕ ${esc(x)}</div>`).join('')}${w.map((x) => `<div style="color:var(--warn)">! ${esc(x)}</div>`).join('')}</div>`;
   }).join('');
   const bk = d.backups.map((b) => `<div class="finding mono">${tag('BACKUP', 'ok')} ${esc(b.ref)} <span class="muted">${esc(b.target_branch)} @ ${short(b.target_sha)}</span></div>`).join('');
-  return `<h2 style="margin-top:0">Verification</h2>${vs || '<div class="empty">Not run yet.</div>'}<h2>Review</h2>${rs || '<div class="empty">Not reviewed yet.</div>'}<h2>Merge safety</h2>${bk || '<div class="empty">No backup yet.</div>'}${d.merge ? `<div class="finding mono">${tag(`MERGE ${d.merge.status.replace(/_/g, ' ')}`, d.merge.status === 'success' ? 'ok' : 'warn')} ${short(d.merge.merged_sha)}</div>` : ''}`;
+  return `<h2 style="margin-top:0">Verification</h2>${vs || `<div class="empty">${d.task.verification_status === 'pending' ? 'Not run yet.' : 'No checks were found in this repository.'}</div>`}<h2>Review</h2>${rs || '<div class="empty">Not reviewed yet.</div>'}<h2>Merge safety</h2>${bk || '<div class="empty">No backup yet.</div>'}${d.merge ? `<div class="finding mono">${tag(`MERGE ${d.merge.status.replace(/_/g, ' ')}`, d.merge.status === 'success' ? 'ok' : 'warn')} ${short(d.merge.merged_sha)}</div>` : ''}`;
 }
 function paneEvents(d) {
   return d.events.length ? d.events.map((e) => `<div class="ev ${severity(e)}" style="grid-template-columns:70px 170px 1fr;padding:2px 0"><span class="ts">${time(e.ts)}</span><span class="ty">${esc(e.type)}</span><span>${esc(describe(e, ''))}</span></div>`).join('') : '<div class="empty">No events.</div>';
@@ -361,6 +362,10 @@ for (const cls of ['act-collapsed', 'nav-collapsed']) if (load(cls, false)) docu
 
 async function act(kind, id) {
   const t = app.data.tasks.find((x) => x.id === id);
+  if (kind === 'retry') { // not destructive: the task starts again in a fresh worktree
+    try { await post(`/api/tasks/${id}/retry`); } catch (e) { alert(`Retry failed: ${e.message}`); }
+    return refresh();
+  }
   const msg = kind === 'rollback' ? `Roll back the merge of #${id} "${t?.title}"? The target branch is restored from the verified pre-merge backup.` : `Cancel task #${id} "${t?.title}"? Its agent process is terminated.`;
   if (!confirm(msg)) return;
   try { await post(`/api/tasks/${id}/${kind}`); } catch (e) { alert(`${kind} failed: ${e.message}`); }

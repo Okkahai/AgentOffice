@@ -43,7 +43,7 @@ const build = (p: string) => { const [f, s] = p.split('|'); return agent(f!, Num
 let running: Promise<void> | null = null;
 const kick = () => { running ??= orch.runAll().finally(() => { running = null; }); return running; };
 const srv = await startUiServer({
-  orch, hub, uiDir: path.resolve(import.meta.dirname, '../ui'), port: Number(process.argv[2] ?? 0),
+  orch, hub, uiDir: path.resolve(import.meta.dirname, '../ui'), port: Number(process.argv[2] ?? 0), kick: () => void kick(),
   onGoal: async (goal) => { await new Promise((r) => setTimeout(r, 1500)); await planAndApply(orch, planner, goal, build); void kick(); },
 });
 console.log(`Agent Office UI: ${srv.url}   (demo repo: ${repo})`);

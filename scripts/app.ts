@@ -54,7 +54,7 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   kick();
   const planner = clis.claude ? new ClaudePlanner(repo) : null;
   return {
-    orch, hub, dataDir,
+    orch, hub, dataDir, kick,
     onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => buildAgentArgv(kind, p)); kick(); } : undefined,
   };
 }
