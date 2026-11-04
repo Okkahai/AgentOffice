@@ -112,3 +112,24 @@ export function graphLayout(tasks, NW = 216, NH = 46, GX = 64, GY = 14, PAD = 16
   const rows = Math.max(...cols.map((c) => c?.length ?? 0));
   return { nodes, edges, w: PAD * 2 + cols.length * NW + (cols.length - 1) * GX, h: PAD * 2 + rows * NH + (rows - 1) * GY };
 }
+
+/**
+ * Unified patch to rows: file headers, hunk headers, context lines and change blocks (deletions then additions),
+ * with old/new line numbers. Header lines are only skipped before a file's first hunk, so a removed "-- x" line survives.
+ */
+export function parseDiff(patch) {
+  const rows = []; let ln = 0, rn = 0, header = false, block = null;
+  const flush = () => { if (block) rows.push(block); block = null; };
+  for (const line of String(patch ?? '').split('\n')) {
+    if (line.startsWith('diff --git ')) { flush(); header = true; rows.push({ t: 'file', text: line.replace(/^diff --git a\/(.*) b\/.*$/, '$1') }); continue; }
+    const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (h) { flush(); header = false; ln = Number(h[1]); rn = Number(h[2]); rows.push({ t: 'hunk', text: line }); continue; }
+    if (header || line.startsWith('\\')) continue;
+    if (line.startsWith('-') || line.startsWith('+')) {
+      block ??= { t: 'change', dels: [], adds: [] };
+      if (line[0] === '-') block.dels.push({ n: ln++, text: line.slice(1) }); else block.adds.push({ n: rn++, text: line.slice(1) });
+    } else if (line.startsWith(' ')) { flush(); rows.push({ t: 'ctx', l: ln++, r: rn++, text: line.slice(1) }); }
+  }
+  flush();
+  return rows;
+}

@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 54/54 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
+Last updated 2026-11-04. Evidence: `npm test` 55/55 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
 
 ## Feature inventory
 
@@ -22,9 +22,9 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Agent-backed independent review | PARTIAL | `ClaudeReviewer` (separate read-only Claude Code process, strict parsing tested in `manager.test.ts`, wiring exercised with a stub binary). Not yet run with the real CLI; review comments and agent responses to feedback are not built |
 | Real-repository launcher | IMPLEMENTED | `npm start -- <repo>`. Run end to end on Linux with a stub `claude` executable on PATH: goal via `POST /api/goal`, plan of 2 dependent tasks, `ClaudeReviewer` approvals, 2 verified merges. Not yet run with the real CLIs |
 | Workspace UI: overview, inbox, sessions, task graph and table, reviews, git, activity, inspector, Ctrl+K | IMPLEMENTED | Screenshot-reviewed against the demo; pure derivations tested in `ui-model.test.ts` |
-| Diff viewer | PARTIAL | Unified diff with file list, live worktree or committed range (`server.test.ts`). No side-by-side view, syntax highlighting or search yet |
+| Diff viewer | PARTIAL | Unified and side-by-side views with old/new line numbers, find in diff (Enter cycles hits), file list, live worktree or committed range (`server.test.ts`, `parseDiff` in `ui-model.test.ts`). No syntax highlighting yet |
 | Terminal | PARTIAL | Real PTY output, read-only. Agents run one-shot non-interactively, so input, resize to the PTY and search are not wired |
-| Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). No permission or input requests yet (no provider reports them), no desktop notifications |
+| Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). Opt-in browser notifications for new items while the window is unfocused (enable from Ctrl+K), checked in Chromium with a refused merge. No permission or input requests yet (no provider reports them) |
 | Session states | PARTIAL | Running / exited / failed / timed out from real events. Interrupt, resume, retry and waiting-for-input are not exposed |
 | Multi-project workspace | VERIFIED | `npm start -- <repo> <repo> ...`: one Orchestrator per repository (own state.db, worktrees, merge lock), `?project=` on every API route, project switcher in the sidebar and Ctrl+K (`server.test.ts`). Run end to end on Linux with two disposable repos and a stub `claude`: both goals planned, 4 verified merges, the user's branch and uncommitted file in one repo untouched |
 | OS-level sandboxing, permission profiles | NOT IMPLEMENTED | Highest-priority safety gap before more unattended use |

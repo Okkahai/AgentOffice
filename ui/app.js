@@ -1,6 +1,6 @@
 // Agent Office UI. Everything shown comes from /api/state, /api/tasks/:id/* and the SSE event stream.
 // Nothing here is authoritative: actions go to the server, which routes them through the Orchestrator.
-import { attention, agentState, describe, goalState, graphLayout, pipeline, severity } from './model.js';
+import { attention, agentState, describe, goalState, graphLayout, parseDiff, pipeline, severity } from './model.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -20,18 +20,33 @@ const statusTag = (s) => tag(s.replace(/_/g, ' '), STATUS_TONE[s]);
 const app = {
   data: { tasks: [], backups: [], merges: [], reviews: [], output: {}, token: '', targetBranch: '', repo: '', goalEntry: false },
   events: [], view: load('view', 'overview'), taskView: load('taskView', 'graph'), selected: null, tab: load('tab', 'terminal'),
-  detail: null, diff: null, connected: false,
+  detail: null, diff: null, connected: false, diffMode: load('diffMode', 'unified'), diffQuery: '', diffHit: 0,
 };
 
 // ---------- data ----------
 async function refresh() {
   app.data = await (await fetch(api('/api/state'))).json();
   render();
+  notifyAttention();
   if (app.selected != null) loadDetail(false);
 }
 let refreshTimer;
+
+// Desktop notifications for new attention items, opt-in from Ctrl+K. Items present at page load are not announced.
+let seenAttention = null, replayed = false;
+function notifyAttention() {
+  if (!replayed) return; // the baseline is taken after the stored event trail has been replayed
+  const items = attention(app.data, app.events), keys = items.map((i) => `${i.kind}:${i.taskId}`);
+  const fresh = seenAttention ? items.filter((_, n) => !seenAttention.has(keys[n])) : [];
+  seenAttention = new Set(keys);
+  if (!fresh.length || typeof Notification === 'undefined' || Notification.permission !== 'granted' || document.hasFocus()) return;
+  for (const i of fresh.slice(0, 3)) {
+    const n = new Notification(`${app.data.repo}: ${i.title}`, { body: i.why, tag: `ao-${app.data.project}-${i.kind}-${i.taskId}` });
+    n.onclick = () => { window.focus(); if (i.taskId != null) select(i.taskId); n.close(); };
+  }
+}
 const es = new EventSource(api('/api/events'));
-es.addEventListener('ready', () => { app.connected = true; renderTop(); });
+es.addEventListener('ready', () => { app.connected = true; replayed = true; renderTop(); refresh(); }); // this refresh sets the notification baseline
 es.onerror = () => { app.connected = false; renderTop(); };
 es.addEventListener('event', (m) => {
   const ev = JSON.parse(m.data);
@@ -247,21 +262,52 @@ function renderInspector(resetTab) {
     if (term && (termTask !== t.id || resetTab)) { term.reset(); term.write((app.data.output[t.id] ?? '').replace(/\n/g, '\r\n')); termTask = t.id; }
     if (!$('#term-note')) $('#term-wrap').insertAdjacentHTML('beforeend', '<div class="note" id="term-note"></div>');
     $('#term-note').textContent = `read-only: agents run non-interactively in their worktree · ${app.data.output[t.id] ? 'live PTY output' : 'no output captured in this server session'}`;
-  } else $('#insp-pane').innerHTML = { diff: paneDiff, review: paneReview, events: paneEvents }[app.tab](d);
+  } else {
+    // Live refreshes re-render the pane; keep the reader's place and the search box focus.
+    const pane = $('#insp-pane'), top = resetTab ? 0 : pane.scrollTop, typing = document.activeElement?.id === 'diff-q';
+    pane.innerHTML = { diff: paneDiff, review: paneReview, events: paneEvents }[app.tab](d);
+    pane.scrollTop = top;
+    if (app.tab === 'diff' && app.diffQuery) findInDiff('keep');
+    if (typing) { const q = $('#diff-q'); q?.focus(); q?.setSelectionRange(q.value.length, q.value.length); }
+  }
 }
 
 function paneDiff() {
   const df = app.diff;
   if (!df || !df.files.length) return `<div class="empty">${df?.source === 'none' ? 'No commits for this task yet.' : 'No changes.'}</div>`;
   const files = `<div class="files">${df.files.map((f, i) => `<button data-file="${i}"><span class="fs-${f.status[0]}">${esc(f.status)}</span>${esc(f.path)}</button>`).join('')}</div>`;
+  const mode = app.diffMode;
+  const bar = `<div class="diff-bar"><span class="muted mono">${df.source === 'worktree' ? 'live worktree vs base' : 'committed change'} · ${df.files.length} file${df.files.length === 1 ? '' : 's'}</span>
+    <input id="diff-q" placeholder="Find in diff" aria-label="Find in diff" value="${esc(app.diffQuery)}"><span class="muted mono" id="diff-hits"></span>
+    <span class="seg">${['unified', 'split'].map((m) => `<button data-diffmode="${m}" class="${m === mode ? 'on' : ''}">${m}</button>`).join('')}</span></div>`;
+  return `${bar}${files}<div class="diff ${mode}" id="diff-body">${renderDiffRows(parseDiff(df.patch), mode)}</div>`;
+}
+function renderDiffRows(rows, mode) {
   let fi = -1;
-  const lines = df.patch.split('\n').map((l) => {
-    if (l.startsWith('diff --git')) { fi++; return `<div class="fh" id="df-${fi}">${esc(l.replace(/^diff --git a\/(.*) b\/.*$/, '$1'))}</div>`; }
-    if (/^(index |--- |\+\+\+ |new file|deleted file|similarity|rename )/.test(l)) return '';
-    const cls = l.startsWith('@@') ? 'hk' : l.startsWith('+') ? 'ad' : l.startsWith('-') ? 'de' : 'cx';
-    return `<div class="${cls}">${esc(l) || ' '}</div>`;
+  const num = (n) => `<span class="ln">${n ?? ''}</span>`;
+  const uni = (k, l, r, text, mark) => `<div class="dl ${k}">${num(l)}${num(r)}<span class="tx">${mark}${esc(text) || ' '}</span></div>`;
+  const half = (k, n, text) => (n == null ? '<div class="dl empty-half"><span class="ln"></span><span class="tx"> </span></div>' : `<div class="dl ${k}">${num(n)}<span class="tx">${esc(text) || ' '}</span></div>`);
+  return rows.map((r) => {
+    if (r.t === 'file') { fi++; return `<div class="fh" id="df-${fi}">${esc(r.text)}</div>`; }
+    if (r.t === 'hunk') return `<div class="dl hk"><span class="tx">${esc(r.text)}</span></div>`;
+    if (mode === 'unified') {
+      if (r.t === 'ctx') return uni('cx', r.l, r.r, r.text, ' ');
+      return r.dels.map((d) => uni('de', d.n, null, d.text, '-')).join('') + r.adds.map((a) => uni('ad', null, a.n, a.text, '+')).join('');
+    }
+    if (r.t === 'ctx') return `<div class="pair">${half('cx', r.l, r.text)}${half('cx', r.r, r.text)}</div>`;
+    return Array.from({ length: Math.max(r.dels.length, r.adds.length) }, (_, i) => `<div class="pair">${half('de', r.dels[i]?.n, r.dels[i]?.text)}${half('ad', r.adds[i]?.n, r.adds[i]?.text)}</div>`).join('');
   }).join('');
-  return `<div class="muted mono" style="margin-bottom:8px">${df.source === 'worktree' ? 'live worktree vs base' : 'committed change'} · ${df.files.length} file${df.files.length === 1 ? '' : 's'}</div>${files}<div class="diff">${lines}</div>`;
+}
+/** Highlights lines containing the query (case-insensitive). step: 'first' jumps to the first hit, 'next' cycles, 'keep' only repaints. */
+function findInDiff(step = 'first') {
+  const q = app.diffQuery.toLowerCase();
+  for (const el of document.querySelectorAll('#diff-body .dl:not(.hk)')) {
+    el.classList.toggle('hit', !!q && el.querySelector('.tx').textContent.toLowerCase().includes(q)); el.classList.remove('cur');
+  }
+  const all = [...document.querySelectorAll('#diff-body .hit')];
+  app.diffHit = step === 'first' || !all.length ? 0 : step === 'next' ? (app.diffHit + 1) % all.length : Math.min(app.diffHit, all.length - 1);
+  if (all.length) { all[app.diffHit].classList.add('cur'); if (step !== 'keep') all[app.diffHit].scrollIntoView({ block: 'center' }); }
+  if ($('#diff-hits')) $('#diff-hits').textContent = q ? `${all.length ? app.diffHit + 1 : 0}/${all.length}` : '';
 }
 function paneReview(d) {
   const vs = d.verifications.map((v) => `<div class="finding">${tag(v.passed ? 'PASS' : 'FAIL', v.passed ? 'ok' : 'err')} <span class="mono">${esc(v.phase)} · ${esc(v.name)}</span><div class="muted mono">${esc(JSON.parse(v.argv).join(' '))} · exit ${v.exit_code ?? '-'} · ${v.duration_ms} ms</div>${v.output_tail ? `<pre class="out">${esc(v.output_tail)}</pre>` : ''}</div>`).join('');
@@ -280,7 +326,7 @@ function select(id, tab) {
   if (id == null || Number.isNaN(id)) return;
   const changed = app.selected !== id;
   app.selected = id; if (tab) { app.tab = tab; save('tab', tab); }
-  if (changed) { app.detail = null; app.diff = null; }
+  if (changed) { app.detail = null; app.diff = null; app.diffQuery = ''; }
   renderMain(); loadDetail(true);
 }
 
@@ -290,6 +336,7 @@ function commands() {
   const tasks = app.data.tasks.map((t) => ({ label: `Open task #${t.id} ${t.title}`, key: t.status.toLowerCase(), run: () => select(t.id) }));
   const extra = [
     { label: 'New goal', key: 'manager', run: () => { setView('overview'); setTimeout(() => $('#goal-input')?.focus(), 0); } },
+    ...(typeof Notification !== 'undefined' && Notification.permission === 'default' ? [{ label: 'Enable desktop notifications', key: 'attention', run: () => Notification.requestPermission() }] : []),
     { label: 'Toggle activity panel', key: 'Alt+A', run: () => toggle('act-collapsed') },
     { label: 'Toggle sidebar', key: 'Alt+B', run: () => toggle('nav-collapsed') },
     ...(app.selected != null ? ['terminal', 'diff', 'review', 'events'].map((tab) => ({ label: `Show ${tab} for #${app.selected}`, key: 'inspector', run: () => select(app.selected, tab) })) : []),
@@ -321,7 +368,7 @@ async function act(kind, id) {
 }
 
 document.addEventListener('click', (e) => {
-  const el = e.target.closest('[data-view],[data-task],[data-open],[data-act],[data-cmd],[data-tab],[data-taskview],[data-file],[data-pal]');
+  const el = e.target.closest('[data-view],[data-task],[data-open],[data-act],[data-cmd],[data-tab],[data-taskview],[data-file],[data-pal],[data-diffmode]');
   if (!el) { if (e.target.id === 'palette') closePalette(); return; }
   if (el.dataset.pal != null) { const c = palItems[+el.dataset.pal]; closePalette(); c?.run(); return; }
   if (el.dataset.act) return void act(el.dataset.act, el.dataset.id ? +el.dataset.id : app.selected);
@@ -329,6 +376,7 @@ document.addEventListener('click', (e) => {
   if (el.dataset.taskview) { app.taskView = el.dataset.taskview; save('taskView', app.taskView); return renderMain(); }
   if (el.dataset.open) return select(+el.dataset.open);
   if (el.dataset.task) return select(+el.dataset.task, el.dataset.tab);
+  if (el.dataset.diffmode) { app.diffMode = el.dataset.diffmode; save('diffMode', app.diffMode); return renderInspector(false); }
   if (el.dataset.file) return document.getElementById(`df-${el.dataset.file}`)?.scrollIntoView({ block: 'start' });
   if (el.dataset.tab && el.closest('#insp-tabs')) { app.tab = el.dataset.tab; save('tab', app.tab); return renderInspector(false); }
   const c = el.dataset.cmd;
@@ -362,6 +410,8 @@ document.addEventListener('keydown', (e) => {
 });
 $('#palette-input').addEventListener('input', () => { palIdx = 0; renderPalette(); });
 $('#act-filter').addEventListener('input', scheduleActivity);
+$('#insp-pane').addEventListener('input', (e) => { if (e.target.id === 'diff-q') { app.diffQuery = e.target.value; findInDiff(); } });
+$('#insp-pane').addEventListener('keydown', (e) => { if (e.target.id === 'diff-q' && e.key === 'Enter') { e.preventDefault(); findInDiff('next'); } });
 $('#act-sev').addEventListener('change', scheduleActivity);
 
 // resizable inspector and activity panel; sizes persist per browser

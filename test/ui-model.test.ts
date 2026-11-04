@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 // @ts-expect-error plain browser module without types
-import { agentState, attention, goalState, graphLayout, pipeline } from '../ui/model.js';
+import { agentState, attention, goalState, graphLayout, parseDiff, pipeline } from '../ui/model.js';
 
 const ev = (type: string, taskId?: number, payload = {}) => ({ type, ts: '2026-01-01T00:00:00Z', taskId, payload });
 const task = (id: number, status: string, dependsOn: number[] = [], extra = {}) => ({ id, title: `t${id}`, status, dependsOn, failure_reason: null, ...extra });
@@ -39,4 +39,16 @@ it('pipeline counts every task exactly once and the graph puts dependents to the
   const x = (id: number) => g.nodes.find((n: any) => n.t.id === id).x;
   assert.ok(x(3) > x(1) && x(1) === x(2));
   assert.equal(g.edges.length, 2);
+});
+
+it('diff parsing numbers lines, pairs changes for split view and keeps removed lines that look like headers', () => {
+  const patch = ['diff --git a/q.sql b/q.sql', 'index 1..2 100644', '--- a/q.sql', '+++ b/q.sql', '@@ -3,3 +3,3 @@ select',
+    ' keep', '--- old comment', '+-- new comment', '+added', ' tail', ''].join('\n');
+  const rows = parseDiff(patch);
+  assert.deepEqual(rows.map((r: { t: string }) => r.t), ['file', 'hunk', 'ctx', 'change', 'ctx']);
+  assert.equal(rows[0].text, 'q.sql');
+  assert.deepEqual(rows[2], { t: 'ctx', l: 3, r: 3, text: 'keep' });
+  assert.deepEqual(rows[3].dels, [{ n: 4, text: '-- old comment' }]);
+  assert.deepEqual(rows[3].adds, [{ n: 4, text: '-- new comment' }, { n: 5, text: 'added' }]);
+  assert.deepEqual(rows[4], { t: 'ctx', l: 5, r: 6, text: 'tail' });
 });
