@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Orchestrator } from '../src/core/orchestrator.ts';
@@ -133,6 +133,21 @@ describe('safety gates', () => {
     assert.match(h.store.getTask(t.id)!.failure_reason!, /Isolation breach/);
     assert.equal(mainSha(), before);
   });
+  it('pre-existing uncommitted work in the main tree is not a breach, but an agent touching it is', async () => {
+    const h = makeOrchestrator(sb, { maxParallel: 1 }); // sequential, so one agent's escape is not blamed on the other
+    // The user works on their own branch; merges into main happen in the merge worktree.
+    git(sb.repo, 'checkout', '-qb', 'user-feature');
+    const wip = path.join(sb.repo, 'user-wip.txt');
+    writeFileSync(wip, 'mine');
+    try {
+      const ok = h.orch.createTask({ title: 'Polite', spec: agentSpec({ write: { 'polite.txt': 'x' } }) });
+      const bad = h.orch.createTask({ title: 'Clobber', spec: agentSpec({ write: { [wip]: 'agent was here, longer' } }) });
+      await h.orch.runAll();
+      assert.equal(h.store.getTask(ok.id)!.status, 'COMPLETED', h.store.getTask(ok.id)!.failure_reason ?? '');
+      assert.match(h.store.getTask(bad.id)!.failure_reason!, /Isolation breach.*user-wip/);
+    } finally { rmSync(wip, { force: true }); git(sb.repo, 'checkout', '-q', 'main'); }
+  });
+
 
   it('kills an agent that exceeds its timeout', async () => {
     const h = makeOrchestrator(sb, { agentTimeoutMs: 300 });

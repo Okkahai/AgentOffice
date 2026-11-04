@@ -9,6 +9,10 @@ const short = (sha) => (sha ? sha.slice(0, 8) : '');
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(`ao.${k}`)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(`ao.${k}`, JSON.stringify(v)); } catch { /* storage unavailable */ } };
 
+// One server can host several repositories; the project is part of the URL so each tab is pinned to one.
+const PROJECT = new URLSearchParams(location.search).get('project');
+const api = (p) => (PROJECT ? `${p}?project=${encodeURIComponent(PROJECT)}` : p);
+
 const STATUS_TONE = { COMPLETED: 'ok', FAILED: 'err', CONFLICT: 'err', BLOCKED: 'warn', CANCELLED: 'mute', QUEUED: 'mute', WORKING: 'info', ASSIGNED: 'info', VERIFYING: 'info', REVIEWING: 'info', READY_TO_MERGE: 'info', MERGING: 'info' };
 const tag = (text, tone = '') => `<span class="tag ${tone}">${esc(text)}</span>`;
 const statusTag = (s) => tag(s.replace(/_/g, ' '), STATUS_TONE[s]);
@@ -21,12 +25,12 @@ const app = {
 
 // ---------- data ----------
 async function refresh() {
-  app.data = await (await fetch('/api/state')).json();
+  app.data = await (await fetch(api('/api/state'))).json();
   render();
   if (app.selected != null) loadDetail(false);
 }
 let refreshTimer;
-const es = new EventSource('/api/events');
+const es = new EventSource(api('/api/events'));
 es.addEventListener('ready', () => { app.connected = true; renderTop(); });
 es.onerror = () => { app.connected = false; renderTop(); };
 es.addEventListener('event', (m) => {
@@ -43,7 +47,7 @@ es.addEventListener('output', (m) => {
 });
 
 async function post(path, body) {
-  const r = await fetch(path, { method: 'POST', headers: { 'x-ao-token': app.data.token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(api(path), { method: 'POST', headers: { 'x-ao-token': app.data.token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -51,7 +55,7 @@ async function post(path, body) {
 async function loadDetail(resetTab = true) {
   const id = app.selected;
   if (id == null) return;
-  const [detail, diff] = await Promise.all([fetch(`/api/tasks/${id}/detail`).then((r) => r.json()), fetch(`/api/tasks/${id}/diff`).then((r) => r.json()).catch(() => null)]);
+  const [detail, diff] = await Promise.all([fetch(api(`/api/tasks/${id}/detail`)).then((r) => r.json()), fetch(api(`/api/tasks/${id}/diff`)).then((r) => r.json()).catch(() => null)]);
   if (id !== app.selected) return;
   app.detail = detail; app.diff = diff;
   renderInspector(resetTab);
@@ -76,7 +80,10 @@ function renderTop() {
 }
 
 function renderNav() {
-  $('#project').innerHTML = `${esc(app.data.repo)}<span class="dim">target ${esc(app.data.targetBranch)}</span>`;
+  const list = app.data.projects ?? [];
+  $('#project').innerHTML = list.length > 1
+    ? list.map((p) => `<a class="proj ${p.id === app.data.project ? 'on' : ''}" href="?project=${encodeURIComponent(p.id)}" title="${esc(p.repo)} → ${esc(p.targetBranch)}">${esc(p.repo)}${p.attention ? `<span class="count">${p.attention}</span>` : ''}<span class="dim">target ${esc(p.targetBranch)}</span></a>`).join('')
+    : `${esc(app.data.repo)}<span class="dim">target ${esc(app.data.targetBranch)}</span>`;
   for (const b of document.querySelectorAll('.nav button[data-view]')) b.classList.toggle('on', b.dataset.view === app.view);
 }
 
@@ -287,7 +294,8 @@ function commands() {
     { label: 'Toggle sidebar', key: 'Alt+B', run: () => toggle('nav-collapsed') },
     ...(app.selected != null ? ['terminal', 'diff', 'review', 'events'].map((tab) => ({ label: `Show ${tab} for #${app.selected}`, key: 'inspector', run: () => select(app.selected, tab) })) : []),
   ];
-  return [...extra, ...views, ...tasks];
+  const projects = (app.data.projects ?? []).filter((p) => p.id !== app.data.project).map((p) => ({ label: `Switch to project ${p.repo}`, key: p.targetBranch, run: () => { location.search = `?project=${encodeURIComponent(p.id)}`; } }));
+  return [...extra, ...projects, ...views, ...tasks];
 }
 let palItems = [], palIdx = 0;
 function openPalette() { $('#palette').hidden = false; $('#palette-input').value = ''; renderPalette(); $('#palette-input').focus(); }

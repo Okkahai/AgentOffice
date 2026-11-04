@@ -24,7 +24,7 @@ Current status per feature: [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md). 
 
 0. **Baseline and safety audit:** done (inventory in DEVELOPMENT_PROGRESS.md, competitor notes in COMPETITIVE_ANALYSIS.md).
 1. **Professional interface foundation:** done. Pixel office removed; black terminal design system; shell, navigation, overview, inspector, activity panel, command palette on real data.
-2. **Core workflow:** goal entry, task graph and real-repo launcher done. Remaining: multi-project, interactive sessions, persisted terminal history, desktop notifications.
+2. **Core workflow:** goal entry, task graph and real-repo launcher done. Multi-project done. Remaining: interactive sessions, persisted terminal history, desktop notifications.
 3. **Review and safety:** agent-backed reviewer and diff viewer started. Remaining: review comments and feedback to agents, side-by-side and highlighted diff, OS sandboxing and permission profiles. Dedicated merge worktree: done.
 4. **Desktop release:** Electron with typed preload, notifications, window state, Windows installer.
 5. **Developer experience:** GitHub issues and PRs, dev-server preview, agent profiles, usage tracking.

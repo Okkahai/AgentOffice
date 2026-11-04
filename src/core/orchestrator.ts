@@ -162,6 +162,8 @@ export class Orchestrator {
     this.#emit('task.assigned', id, { agentId }, agentId);
     this.#guard(id);
 
+    // Snapshot the user's tree so their own uncommitted work is not mistaken for an escape.
+    const mainBefore = new Set(await this.#mergeLock.run(() => this.git.treeFingerprint()));
     t = this.#move(id, 'WORKING');
     this.#emit('task.started', id, {}, agentId);
     const inv = (this.#cfg.launch ?? defaultLaunch)(t);
@@ -180,9 +182,10 @@ export class Orchestrator {
     if (exit.code !== 0) { this.#emit('agent.failed', id, { code: exit.code }, agentId); throw new Error(`Agent exited with code ${exit.code}`); }
     this.#emit('agent.completed', id, {}, agentId);
 
-    // The main tree is not the agent's workspace: any change there is an isolation breach.
-    const dirty = await this.#mergeLock.run(() => this.git.verifyCleanState());
-    if (!dirty.clean) throw new Error(`Isolation breach: main working tree modified (${dirty.entries.slice(0, 3).join(', ')})`);
+    // The main tree is not the agent's workspace: any change there during the run is an isolation breach.
+    // shortcut: user edits made in the main tree while an agent runs are flagged too; per-process attribution needs OS sandboxing.
+    const changed = (await this.#mergeLock.run(() => this.git.treeFingerprint())).filter((e) => !mainBefore.has(e));
+    if (changed.length) throw new Error(`Isolation breach: main working tree modified (${changed.slice(0, 3).map((e) => e.split('|')[0]).join(', ')})`);
 
     const sha = await this.git.commit(wt.path, `agent-office: task ${id}: ${t.title}`);
     this.store.update(id, { commit_sha: sha });

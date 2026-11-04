@@ -31,14 +31,29 @@ export class OutputHub {
   subscribe(cb: (taskId: number, chunk: string) => void) { this.#subs.add(cb); return () => this.#subs.delete(cb); }
 }
 
-export interface UiServerOptions {
-  orch: Orchestrator; hub: OutputHub; uiDir: string; port?: number;
+export interface ProjectHandle {
+  orch: Orchestrator; hub: OutputHub;
   /** Manager entry point. Absent means goal entry is unavailable (the UI says so instead of faking it). */
   onGoal?: (goal: string) => Promise<unknown>;
 }
 
+export interface UiServerOptions extends Partial<ProjectHandle> {
+  /** One entry per repository. Each has its own store, worktrees and merge lock. Defaults to the single orch/hub/onGoal. */
+  projects?: ProjectHandle[];
+  uiDir: string; port?: number;
+}
+
+type Project = ProjectHandle & { id: string };
+
 export async function startUiServer(opts: UiServerOptions) {
-  const { orch, hub, uiDir } = opts;
+  const { uiDir } = opts;
+  const projects: Project[] = [];
+  for (const h of opts.projects ?? [{ orch: opts.orch!, hub: opts.hub!, onGoal: opts.onGoal }]) {
+    const base = path.basename(h.orch.git.root).toLowerCase().replace(/[^a-z0-9._-]+/g, '-') || 'repo';
+    let id = base;
+    for (let n = 2; projects.some((p) => p.id === id); n++) id = `${base}-${n}`;
+    projects.push({ ...h, id });
+  }
   const token = randomBytes(16).toString('hex');
   let port = 0;
 
@@ -47,12 +62,18 @@ export async function startUiServer(opts: UiServerOptions) {
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) { res.writeHead(403).end('bad host'); return; }
     const url = new URL(req.url ?? '/', `http://${host}`);
     try {
-      if (req.method === 'GET' && url.pathname === '/api/state') return json(res, state());
-      if (req.method === 'GET' && url.pathname === '/api/events') return sse(req, res);
-      const detail = /^\/api\/tasks\/(\d+)\/(detail|diff)$/.exec(url.pathname);
-      if (req.method === 'GET' && detail) return json(res, detail[2] === 'detail' ? taskDetail(Number(detail[1])) : await taskDiff(Number(detail[1])));
-      if (req.method === 'POST' && url.pathname === '/api/goal') return await goal(req, res);
-      if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/')) return await action(req, res, url);
+      if (url.pathname.startsWith('/api/')) {
+        const pid = url.searchParams.get('project');
+        const p = pid ? projects.find((q) => q.id === pid) : projects[0];
+        if (!p) return void res.writeHead(404).end('no such project');
+        if (req.method === 'GET' && url.pathname === '/api/state') return json(res, state(p));
+        if (req.method === 'GET' && url.pathname === '/api/events') return sse(p, req, res);
+        const detail = /^\/api\/tasks\/(\d+)\/(detail|diff)$/.exec(url.pathname);
+        if (req.method === 'GET' && detail) return json(res, detail[2] === 'detail' ? taskDetail(p, Number(detail[1])) : await taskDiff(p, Number(detail[1])));
+        if (req.method === 'POST' && url.pathname === '/api/goal') return await goal(p, req, res);
+        if (req.method === 'POST' && url.pathname.startsWith('/api/tasks/')) return await action(p, req, res, url);
+        return void res.writeHead(404).end();
+      }
       if (req.method === 'GET') return await serveStatic(res, url.pathname);
       res.writeHead(405).end();
     } catch (e) {
@@ -61,10 +82,15 @@ export async function startUiServer(opts: UiServerOptions) {
     }
   });
 
-  function state() {
+  /** Tasks and merges that need a human, per project, for the project switcher. */
+  const needsAttention = (o: Orchestrator) => o.store.listTasks().filter((t) => ['FAILED', 'CONFLICT', 'BLOCKED'].includes(t.status)).length
+    + o.store.merges().filter((m) => m.status === 'verification_failed').length;
+
+  function state({ id, orch, hub, onGoal }: Project) {
     const s = orch.store;
     return {
-      token, targetBranch: orch.targetBranch, repo: path.basename(orch.git.root), goalEntry: !!opts.onGoal,
+      token, project: id, targetBranch: orch.targetBranch, repo: path.basename(orch.git.root), goalEntry: !!onGoal,
+      projects: projects.map((q) => ({ id: q.id, repo: path.basename(q.orch.git.root), targetBranch: q.orch.targetBranch, attention: needsAttention(q.orch) })),
       tasks: s.listTasks().map((t) => ({ ...t, dependsOn: s.deps(t.id) })),
       backups: s.backups(), merges: s.merges(),
       reviews: s.listTasks().flatMap((t) => s.reviews(t.id).map((r) => ({ ...r, task_id: t.id }))),
@@ -72,7 +98,7 @@ export async function startUiServer(opts: UiServerOptions) {
     };
   }
 
-  function sse(req: http.IncomingMessage, res: http.ServerResponse) {
+  function sse({ orch, hub }: Project, req: http.IncomingMessage, res: http.ServerResponse) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
     const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     for (const e of orch.store.events()) send('event', toEvent(e));
@@ -83,7 +109,7 @@ export async function startUiServer(opts: UiServerOptions) {
     req.on('close', () => { unsub(); unsubOut(); clearInterval(ping); });
   }
 
-  function taskDetail(id: number) {
+  function taskDetail({ orch }: Project, id: number) {
     const s = orch.store, task = s.getTask(id);
     if (!task) return { error: 'no such task' };
     return {
@@ -93,7 +119,7 @@ export async function startUiServer(opts: UiServerOptions) {
   }
 
   /** Live worktree diff while the task runs, otherwise the committed range; never fabricated. */
-  async function taskDiff(id: number) {
+  async function taskDiff({ orch }: Project, id: number) {
     const t = orch.store.getTask(id);
     if (!t?.base_sha) return { files: [], patch: '', stat: '', source: 'none' };
     if (t.worktree_path && existsSync(t.worktree_path)) return { ...(await orch.git.getDiff(t.worktree_path, t.base_sha)), source: 'worktree' };
@@ -101,19 +127,19 @@ export async function startUiServer(opts: UiServerOptions) {
     return { files: [], patch: '', stat: '', source: 'none' };
   }
 
-  async function goal(req: http.IncomingMessage, res: http.ServerResponse) {
+  async function goal({ orch, onGoal }: Project, req: http.IncomingMessage, res: http.ServerResponse) {
     if (req.headers['x-ao-token'] !== token) return void res.writeHead(403).end('bad token');
-    if (!opts.onGoal) return void res.writeHead(501).end('goal entry not configured');
+    if (!onGoal) return void res.writeHead(501).end('goal entry not configured');
     let body = '';
     for await (const c of req) { body += c; if (body.length > 8_000) return void res.writeHead(413).end(); }
     const text = String(JSON.parse(body || '{}').goal ?? '').trim();
     if (!text) return void res.writeHead(400).end('empty goal');
     orch.bus.emit('plan.started', { agentId: 'manager', payload: { goal: text } });
-    opts.onGoal(text).catch((e) => orch.bus.emit('plan.failed', { agentId: 'manager', payload: { goal: text, reason: (e as Error).message } }));
+    onGoal(text).catch((e) => orch.bus.emit('plan.failed', { agentId: 'manager', payload: { goal: text, reason: (e as Error).message } }));
     json(res, { ok: true });
   }
 
-  async function action(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+  async function action({ orch }: Project, req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     if (req.headers['x-ao-token'] !== token) return void res.writeHead(403).end('bad token');
     const m = /^\/api\/tasks\/(\d+)\/(cancel|rollback)$/.exec(url.pathname);
     if (!m) return void res.writeHead(404).end();

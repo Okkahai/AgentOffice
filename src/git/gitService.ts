@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { assertInside, assertSafeId, slugify } from './paths.ts';
 
@@ -82,6 +82,15 @@ export class GitService {
     const head = await this.tryResolve('HEAD');
     const state = await this.verifyCleanState();
     return { root: top, branch, head, clean: state.clean, dirtyEntries: state.entries };
+  }
+
+  /** Dirty entries of a tree, each with its file's mtime and size, so later edits to an already-dirty file show up too. */
+  async treeFingerprint(cwd = this.root): Promise<string[]> {
+    const { entries } = await this.verifyCleanState(cwd);
+    return entries.map((e) => {
+      const st = statSync(path.join(cwd, e.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, '')), { throwIfNoEntry: false });
+      return `${e}|${st ? `${st.mtimeMs}:${st.size}` : 'gone'}`;
+    });
   }
 
   async verifyCleanState(cwd = this.root): Promise<{ clean: boolean; entries: string[] }> {

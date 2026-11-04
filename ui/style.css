@@ -45,6 +45,11 @@ body.nav-collapsed .nav { visibility: hidden; }
 .nav-label:first-child { padding-top: 0; }
 .project { padding: var(--s1) var(--s2); font-family: var(--mono); font-size: 12px; }
 .project .dim { display: block; font-size: 11px; }
+.project:has(.proj) { padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.proj { display: block; position: relative; padding: 5px var(--s2); border-radius: 4px; color: var(--text-2); text-decoration: none; }
+.proj:hover { background: var(--raised); color: var(--text); }
+.proj.on { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--text-2); }
+.proj .count { position: absolute; right: var(--s2); top: 5px; }
 .nav button { display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 5px var(--s2); border-radius: 4px; color: var(--text-2); }
 .nav button:hover { background: var(--raised); color: var(--text); }
 .nav button.on { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--text-2); }

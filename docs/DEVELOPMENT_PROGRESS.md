@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 51/51 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
+Last updated 2026-11-04. Evidence: `npm test` 54/54 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
 
 ## Feature inventory
 
@@ -11,7 +11,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Typed events, persisted audit trail | VERIFIED | `orchestrator.test.ts`, `server.test.ts` (SSE replay) |
 | Task state machine, dependencies, blocking | VERIFIED | `taskMachine.test.ts`, `orchestrator.test.ts` |
 | SQLite state, restart recovery (3 crash points) | VERIFIED | `orchestrator.test.ts` |
-| Worktree isolation, path and symlink validation | VERIFIED | `git.test.ts`; escapes into the main tree are detected and fail the task, not prevented |
+| Worktree isolation, path and symlink validation | VERIFIED | `git.test.ts`, `orchestrator.test.ts`; escapes into the main tree are detected and fail the task, not prevented. Detection compares the main tree before and after each run, so the user's existing uncommitted work is allowed, but edits the user makes there during a run are also flagged |
 | Verification before and after merge | VERIFIED | `orchestrator.test.ts` |
 | Mandatory verified pre-merge backup, merge gates, conflicts | VERIFIED | `git.test.ts`, `orchestrator.test.ts` |
 | Rollback from persisted evidence | VERIFIED | `git.test.ts`, `server.test.ts` |
@@ -26,7 +26,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Terminal | PARTIAL | Real PTY output, read-only. Agents run one-shot non-interactively, so input, resize to the PTY and search are not wired |
 | Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). No permission or input requests yet (no provider reports them), no desktop notifications |
 | Session states | PARTIAL | Running / exited / failed / timed out from real events. Interrupt, resume, retry and waiting-for-input are not exposed |
-| Multi-project workspace | NOT IMPLEMENTED | One repository per server process; the schema has no project column yet |
+| Multi-project workspace | VERIFIED | `npm start -- <repo> <repo> ...`: one Orchestrator per repository (own state.db, worktrees, merge lock), `?project=` on every API route, project switcher in the sidebar and Ctrl+K (`server.test.ts`). Run end to end on Linux with two disposable repos and a stub `claude`: both goals planned, 4 verified merges, the user's branch and uncommitted file in one repo untouched |
 | OS-level sandboxing, permission profiles | NOT IMPLEMENTED | Highest-priority safety gap before more unattended use |
 | Dedicated merge worktree | VERIFIED | `git.test.ts`: merge and rollback while the user's tree is on another branch with uncommitted work; the branch moves by CAS ref update, or by fast-forward when a clean worktree has it checked out. Post-merge checks run on the merged commit in `<worktrees>/merge` |
 | Electron packaging, native notifications, installer | NOT IMPLEMENTED | IPC boundary designed in `architecture.md` |
@@ -41,7 +41,6 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 
 ## Next
 1. OS-level sandboxing on Windows (restricted token / AppContainer evaluation) and permission profiles, before broader autonomy.
-3. Real end-to-end run from the UI: goal, `ClaudePlanner`, Claude Code engineers, `ClaudeReviewer`, on a disposable repo, on Windows.
-4. Multi-project schema migration (project id on tasks and events, per-repository merge locks).
-5. Interactive sessions (input, interrupt, resume where the CLI supports it) and the attention items they produce.
-6. Electron shell with the typed preload API.
+2. Real end-to-end run from the UI: goal, `ClaudePlanner`, Claude Code engineers, `ClaudeReviewer`, on a disposable repo, on Windows.
+3. Interactive sessions (input, interrupt, resume where the CLI supports it) and the attention items they produce.
+4. Electron shell with the typed preload API.

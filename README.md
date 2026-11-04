@@ -28,7 +28,7 @@ Every step is recorded in SQLite. Every automatic merge has a recoverable pre-me
 
 <p align="center"><img src="docs/screenshots/workspace.png" alt="Agent Office workspace: pipeline, sessions, task graph, live agent terminal and event log" width="900"></p>
 
-> **Status:** the core loop, the Manager, goal entry from the UI, an independent Claude Code reviewer and the workspace UI work. Sandboxing, multi-project support and the Electron app are next. Feature-by-feature state: [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md).
+> **Status:** the core loop, the Manager, goal entry from the UI, an independent Claude Code reviewer and the workspace UI, several repositories in one window and a dedicated merge worktree work. Sandboxing and the Electron app are next. Feature-by-feature state: [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md).
 
 ## Guarantees (enforced in code, not by prompting)
 
@@ -58,6 +58,7 @@ Run on one of your repositories with real agents (their own logins; state and wo
 
 ```bash
 npm start -- path/to/repo --agent claude --branch main   # then open http://127.0.0.1:4174
+npm start -- path/to/api path/to/web                      # several repositories, one project each
 ```
 
 Run one task with a real agent CLI on a throwaway repo:
@@ -115,7 +116,8 @@ Full design, stack decisions and the Electron IPC boundary: [docs/architecture.m
 - [x] Goal entry from the UI, independent Claude Code reviewer, `npm start` on a real repository
 - [x] Dedicated merge worktree (your working tree is never merged into)
 - [ ] OS-level sandboxing and permission profiles
-- [ ] Multi-project workspace, interactive sessions, desktop notifications
+- [x] Multi-project workspace
+- [ ] Interactive sessions, desktop notifications
 - [ ] Electron packaging (typed IPC), GitHub PR workflow
 
 ## Known limits
