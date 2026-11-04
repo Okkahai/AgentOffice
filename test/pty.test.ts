@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { buildAgentArgv, detectClis } from '../src/agents/cliAgents.ts';
+import { buildAgentArgv, detectClis, parseProfile } from '../src/agents/cliAgents.ts';
 import { FAKE_AGENT } from './helpers.ts';
 
 const node = process.execPath;
@@ -58,6 +58,20 @@ describe('CLI detection and argv building', () => {
       const argv = buildAgentArgv('codex', 'fix; rm -rf /', dir);
       assert.deepEqual(argv, [path.join(dir, 'codex'), 'exec', '--full-auto', 'fix; rm -rf /']); // prompt is one argv element, never shell-parsed
       assert.throws(() => buildAgentArgv('claude', 'x', dir), /not found/);
+      assert.deepEqual(buildAgentArgv('codex', 'go', dir, 'gpt-x'), [path.join(dir, 'codex'), 'exec', '--full-auto', '--model', 'gpt-x', 'go']);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('agent profiles', () => {
+  const d = { agent: 'claude' as const, branch: 'main' };
+  it('accepts only agent, model and branch, with plain values', () => {
+    assert.deepEqual(parseProfile(undefined, d), d);
+    assert.deepEqual(parseProfile({ agent: 'codex', model: 'o4-mini', branch: 'master' }, d), { agent: 'codex', model: 'o4-mini', branch: 'master' });
+    assert.throws(() => parseProfile({ args: ['--dangerously-skip-permissions'] }, d), /unsupported keys args/);
+    assert.throws(() => parseProfile({ model: '--dangerously-skip-permissions' }, d), /plain model/);
+    assert.throws(() => parseProfile({ agent: 'bash' }, d), /agent must be/);
+    assert.throws(() => parseProfile({ branch: '../main' }, d), /plain branch/);
+    assert.throws(() => parseProfile([], d), /object/);
   });
 });

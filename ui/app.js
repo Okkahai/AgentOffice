@@ -96,9 +96,10 @@ function renderTop() {
 
 function renderNav() {
   const list = app.data.projects ?? [];
+  const who = (pr) => (pr ? ` · ${esc(pr.agent)}${pr.model ? ` ${esc(pr.model)}` : ''}` : '');
   $('#project').innerHTML = list.length > 1
-    ? list.map((p) => `<a class="proj ${p.id === app.data.project ? 'on' : ''}" href="?project=${encodeURIComponent(p.id)}" title="${esc(p.repo)} → ${esc(p.targetBranch)}">${esc(p.repo)}${p.attention ? `<span class="count">${p.attention}</span>` : ''}<span class="dim">target ${esc(p.targetBranch)}</span></a>`).join('')
-    : `${esc(app.data.repo)}<span class="dim">target ${esc(app.data.targetBranch)}</span>`;
+    ? list.map((p) => `<a class="proj ${p.id === app.data.project ? 'on' : ''}" href="?project=${encodeURIComponent(p.id)}" title="${esc(p.repo)} → ${esc(p.targetBranch)}">${esc(p.repo)}${p.attention ? `<span class="count">${p.attention}</span>` : ''}<span class="dim">target ${esc(p.targetBranch)}${who(p.profile)}</span></a>`).join('')
+    : `${esc(app.data.repo)}<span class="dim">target ${esc(app.data.targetBranch)}${who(app.data.profile)}</span>`;
   for (const b of document.querySelectorAll('.nav button[data-view]')) b.classList.toggle('on', b.dataset.view === app.view);
 }
 

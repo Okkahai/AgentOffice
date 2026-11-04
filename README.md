@@ -59,6 +59,8 @@ Run on one of your repositories with real agents (their own logins; state and wo
 ```bash
 npm start -- path/to/repo --agent claude --branch main   # then open http://127.0.0.1:4174
 npm start -- path/to/api path/to/web                      # several repositories, one project each
+# per-project profile (outside the repo): ~/.agent-office/<repo>/profile.json
+#   {"agent": "codex", "model": "<model>", "branch": "master"}   only these three keys are accepted
 ```
 
 Run one task with a real agent CLI on a throwaway repo:

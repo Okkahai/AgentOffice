@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 56/56 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
+Last updated 2026-11-04. Evidence: `npm test` 57/57 passing and `npm run typecheck` clean on Linux (Node 22.23). The Windows run of the suite is still pending for this revision.
 
 ## Feature inventory
 
@@ -31,7 +31,8 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Dedicated merge worktree | VERIFIED | `git.test.ts`: merge and rollback while the user's tree is on another branch with uncommitted work; the branch moves by CAS ref update, or by fast-forward when a clean worktree has it checked out. Post-merge checks run on the merged commit in `<worktrees>/merge` |
 | Electron packaging, native notifications, installer | NOT IMPLEMENTED | IPC boundary designed in `architecture.md` |
 | GitHub integration | NOT IMPLEMENTED | |
-| Dev-server preview, agent profiles, usage tracking | NOT IMPLEMENTED | Phase 5 |
+| Agent profiles | IMPLEMENTED | Per project `~/.agent-office/<repo>/profile.json` with only `agent`, `model` and `branch` (allowlist, so no profile can add a permission-bypass flag; `pty.test.ts`). Shown in the sidebar. Run end to end with a stub `claude` (model passed through, merges onto `trunk`). The `--model` flags of codex and opencode are not yet checked against installed versions |
+| Dev-server preview, usage tracking | NOT IMPLEMENTED | Phase 5 |
 | Pixel-art office UI | REMOVED | Replaced by the workspace UI on 2026-11-04 |
 
 ## Known security limitations

@@ -37,6 +37,8 @@ export interface ProjectHandle {
   onGoal?: (goal: string) => Promise<unknown>;
   /** Starts the project's runner after a retry re-queued tasks. */
   kick?: () => void;
+  /** Which CLI (and model) engineers run as, shown in the UI. */
+  profile?: { agent: string; model?: string };
 }
 
 export interface UiServerOptions extends Partial<ProjectHandle> {
@@ -88,11 +90,11 @@ export async function startUiServer(opts: UiServerOptions) {
   const needsAttention = (o: Orchestrator) => o.store.listTasks().filter((t) => ['FAILED', 'CONFLICT', 'BLOCKED'].includes(t.status)).length
     + o.store.merges().filter((m) => m.status === 'verification_failed').length;
 
-  function state({ id, orch, hub, onGoal }: Project) {
+  function state({ id, orch, hub, onGoal, profile }: Project) {
     const s = orch.store;
     return {
-      token, project: id, targetBranch: orch.targetBranch, repo: path.basename(orch.git.root), goalEntry: !!onGoal,
-      projects: projects.map((q) => ({ id: q.id, repo: path.basename(q.orch.git.root), targetBranch: q.orch.targetBranch, attention: needsAttention(q.orch) })),
+      token, project: id, targetBranch: orch.targetBranch, repo: path.basename(orch.git.root), goalEntry: !!onGoal, profile: profile ?? null,
+      projects: projects.map((q) => ({ id: q.id, repo: path.basename(q.orch.git.root), targetBranch: q.orch.targetBranch, attention: needsAttention(q.orch), profile: q.profile ?? null })),
       tasks: s.listTasks().map((t) => ({ ...t, dependsOn: s.deps(t.id) })),
       backups: s.backups(), merges: s.merges(),
       reviews: s.listTasks().flatMap((t) => s.reviews(t.id).map((r) => ({ ...r, task_id: t.id }))),

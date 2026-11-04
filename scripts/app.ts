@@ -1,11 +1,13 @@
 // Agent Office on one of YOUR repositories, with real CLI agents (their own logins, no API keys).
 //   npm start -- <repo-path> [<repo-path> ...] [--agent claude|codex|opencode] [--branch main] [--port 4174]
 // Each repository is its own project. State and worktrees live in ~/.agent-office/<repo-name>, outside the repository.
-import { existsSync, mkdirSync } from 'node:fs';
+// Optional ~/.agent-office/<repo-name>/profile.json overrides the flags for that project: {"agent":"codex","model":"...","branch":"master"}.
+// It lives outside the repository on purpose, so an agent cannot rewrite its own profile.
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { buildAgentArgv, detectClis, type CliKind } from '../src/agents/cliAgents.ts';
+import { buildAgentArgv, detectClis, parseProfile, type CliKind } from '../src/agents/cliAgents.ts';
 import { CommandProvider, type AgentProvider } from '../src/agents/provider.ts';
 import { Orchestrator } from '../src/core/orchestrator.ts';
 import { Store } from '../src/core/store.ts';
@@ -17,10 +19,9 @@ import { OutputHub, startUiServer, type ProjectHandle } from '../src/server/serv
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { agent: { type: 'string', default: 'claude' }, branch: { type: 'string', default: 'main' }, port: { type: 'string', default: '4174' } } });
 const repos = (positionals.length ? positionals : ['.']).map((r) => path.resolve(r));
-const kind = values.agent as CliKind;
+const defaults = parseProfile({ agent: values.agent, branch: values.branch }, { agent: 'claude' });
 const clis = detectClis();
 console.log('detected CLIs:', clis);
-if (!clis[kind]) { console.error(`${kind} CLI not found on PATH`); process.exit(1); }
 if (!clis.claude) console.warn('claude CLI missing: only deterministic review gates will run, and goal planning is unavailable');
 
 let provider: AgentProvider = new CommandProvider();
@@ -32,12 +33,18 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   if (!existsSync(path.join(repo, '.git'))) throw new Error(`Not a git repository: ${repo}`);
   const dataDir = path.join(homedir(), '.agent-office', path.basename(repo));
   mkdirSync(dataDir, { recursive: true });
+  const profileFile = path.join(dataDir, 'profile.json');
+  let profile;
+  try { profile = parseProfile(existsSync(profileFile) ? JSON.parse(readFileSync(profileFile, 'utf8')) : undefined, defaults); }
+  catch (e) { throw new Error(`${profileFile}: ${(e as Error).message}`); }
+  const { agent: kind, model } = profile, branch = profile.branch!;
+  if (!clis[kind]) throw new Error(`${repo}: ${kind} CLI not found on PATH`);
   const hub = new OutputHub();
   const git = new GitService({ repoRoot: repo, worktreesDir: path.join(dataDir, 'worktrees') });
-  if (!(await git.tryResolve(`refs/heads/${values.branch}`))) throw new Error(`${repo} has no branch ${values.branch} (use --branch)`);
+  if (!(await git.tryResolve(`refs/heads/${branch}`))) throw new Error(`${repo} has no branch ${branch} (use --branch or profile.json)`);
   const orch = new Orchestrator({
     store: new Store(path.join(dataDir, 'state.db')), git,
-    provider, onAgentOutput: hub.push, targetBranch: values.branch, agentTimeoutMs: 30 * 60_000,
+    provider, onAgentOutput: hub.push, targetBranch: branch, agentTimeoutMs: 30 * 60_000,
     reviewer: clis.claude ? new ClaudeReviewer() : undefined,
   });
   await orch.recover();
@@ -54,8 +61,8 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   kick();
   const planner = clis.claude ? new ClaudePlanner(repo) : null;
   return {
-    orch, hub, dataDir, kick,
-    onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => buildAgentArgv(kind, p)); kick(); } : undefined,
+    orch, hub, dataDir, kick, profile: { agent: kind, model },
+    onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => buildAgentArgv(kind, p, undefined, model)); kick(); } : undefined,
   };
 }
 
@@ -67,5 +74,5 @@ try { projects = await Promise.all(repos.map(openProject)); }
 catch (e) { console.error((e as Error).message); process.exit(1); }
 
 const srv = await startUiServer({ projects, uiDir: path.resolve(import.meta.dirname, '../ui'), port: Number(values.port) });
-console.log(`Agent Office: ${srv.url}\n  agents: ${kind}, target branch: ${values.branch}`);
-for (const p of projects) console.log(`  ${p.orch.git.root}  (data: ${p.dataDir})`);
+console.log(`Agent Office: ${srv.url}`);
+for (const p of projects) console.log(`  ${p.orch.git.root} -> ${p.orch.targetBranch}, ${p.profile!.agent}${p.profile!.model ? ` (${p.profile!.model})` : ''}  (data: ${p.dataDir})`);
