@@ -55,7 +55,7 @@ body.nav-collapsed .nav { visibility: hidden; }
 .proj:hover { background: var(--raised); color: var(--text); }
 .proj.on { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--text-2); }
 .proj .count { position: absolute; right: var(--s2); top: 5px; }
-.nav button { display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 5px var(--s2); border-radius: 4px; color: var(--text-2); }
+.nav button { display: flex; justify-content: space-between; align-items: center; text-align: left; font-family: var(--mono); font-size: 12px; padding: 5px var(--s2); border-radius: 4px; color: var(--text-2); }
 .nav button:hover { background: var(--raised); color: var(--text); }
 .nav button.on { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--text-2); }
 .count { font-family: var(--mono); font-size: 11px; color: var(--warn); }
