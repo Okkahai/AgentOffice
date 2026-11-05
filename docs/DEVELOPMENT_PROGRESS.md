@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 59/59 passing and `npm run typecheck` clean on Linux (Node 22.23). Windows (Node 24, 2026-11-04): typecheck clean, the suite passed except that the PTY probe hung and `claude.CMD` could not be spawned (`spawn EINVAL`); both fixed since, Windows re-run pending.
+Last updated 2026-11-04. Evidence: `npm test` 59/59 passing and `npm run typecheck` clean on Linux (Node 22.23). Windows (Node 24, 2026-11-04): typecheck clean, the suite passed except that the PTY probe hung and `claude.CMD` could not be spawned (`spawn EINVAL`); shims fixed since; the PTY tests and PTY sessions are now opt-in on Windows (`AO_PTY=1`) and agents use pipes there. On the Windows re-run of fd08b71, typecheck and the git, manager, orchestrator and provider suites passed; the end-to-end run is still pending.
 
 ## Feature inventory
 
@@ -23,7 +23,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Real-repository launcher | IMPLEMENTED | `npm start -- <repo>`. Run end to end on Linux with a stub `claude` executable on PATH: goal via `POST /api/goal`, plan of 2 dependent tasks, `ClaudeReviewer` approvals, 2 verified merges. Not yet run with the real CLIs |
 | Workspace UI: overview, inbox, sessions, task graph and table, reviews, git, activity, inspector, Ctrl+K | IMPLEMENTED | Screenshot-reviewed against the demo; pure derivations tested in `ui-model.test.ts` |
 | Diff viewer | PARTIAL | Unified and side-by-side views with old/new line numbers, find in diff (Enter cycles hits), file list, live worktree or committed range, line-local syntax highlighting for common languages (`server.test.ts`; `parseDiff` and `highlight`, including HTML escaping, in `ui-model.test.ts`). The highlighter does not track multi-line strings or comments |
-| Terminal | PARTIAL | Real PTY output, read-only. Agents run one-shot non-interactively, so input, resize to the PTY and search are not wired |
+| Terminal | PARTIAL | Real PTY output, read-only (pipes on Windows unless `AO_PTY=1`). Agents run one-shot non-interactively, so input, resize to the PTY and search are not wired |
 | Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). Opt-in browser notifications for new items while the window is unfocused (enable from Ctrl+K), checked in Chromium with a refused merge. No permission or input requests yet (no provider reports them) |
 | Session states | PARTIAL | Running / exited / failed / timed out from real events. Retry of failed, conflicted or blocked tasks (re-queues tasks blocked on it, refused while a merge is still on the target) is in the inspector (`orchestrator.test.ts`, `server.test.ts`, checked in Chromium). Interrupt, resume and waiting-for-input are not exposed |
 | Multi-project workspace | VERIFIED | `npm start -- <repo> <repo> ...`: one Orchestrator per repository (own state.db, worktrees, merge lock), `?project=` on every API route, project switcher in the sidebar and Ctrl+K (`server.test.ts`). Run end to end on Linux with two disposable repos and a stub `claude`: both goals planned, 4 verified merges, the user's branch and uncommitted file in one repo untouched |

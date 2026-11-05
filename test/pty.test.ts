@@ -10,10 +10,13 @@ const node = process.execPath;
 
 // node-pty is a native module; skip (don't hang) when it isn't built here or never reports exit (some Windows ConPTY setups).
 let PtyProvider: typeof import('../src/agents/ptyProvider.ts').PtyProvider | undefined;
-try {
-  const mod = await import('../src/agents/ptyProvider.ts');
-  PtyProvider = (await mod.ptyWorks()) ? mod.PtyProvider : undefined;
-} catch { PtyProvider = undefined; }
+// On Windows a probe that never exits still keeps the test process alive, so PTY tests there are opt-in (AO_PTY=1).
+if (process.platform !== 'win32' || process.env.AO_PTY === '1') {
+  try {
+    const mod = await import('../src/agents/ptyProvider.ts');
+    PtyProvider = (await mod.ptyWorks()) ? mod.PtyProvider : undefined;
+  } catch { PtyProvider = undefined; }
+}
 
 
 describe('PTY provider (real pseudo-terminal)', { skip: !PtyProvider && 'node-pty not available' }, () => {

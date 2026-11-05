@@ -25,7 +25,8 @@ console.log('detected CLIs:', clis);
 if (!clis.claude) console.warn('claude CLI missing: only deterministic review gates will run, and goal planning is unavailable');
 
 let provider: AgentProvider = new CommandProvider();
-try {
+// shortcut: Windows uses pipes unless AO_PTY=1, because ConPTY did not report process exit on the first Windows run; revisit with an interactive-session build.
+if (process.platform !== 'win32' || process.env.AO_PTY === '1') try {
   const mod = await import('../src/agents/ptyProvider.ts');
   if (await mod.ptyWorks()) provider = new mod.PtyProvider();
   else console.warn('node-pty did not report a test process exit, using pipes');
