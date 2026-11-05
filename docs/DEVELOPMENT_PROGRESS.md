@@ -29,7 +29,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Multi-project workspace | VERIFIED | `npm start -- <repo> <repo> ...`: one Orchestrator per repository (own state.db, worktrees, merge lock), `?project=` on every API route, project switcher in the sidebar and Ctrl+K (`server.test.ts`). Run end to end on Linux with two disposable repos and a stub `claude`: both goals planned, 4 verified merges, the user's branch and uncommitted file in one repo untouched |
 | OS-level sandboxing, permission profiles | PARTIAL | Claude Code engineers always run with deny rules (push, remote/config changes, curl/wget/ssh/scp, WebFetch/WebSearch, `~/.ssh`, `~/.aws`, `~/.config/gh`, `.env`) and bypass mode disabled; Claude Code's OS sandbox is enabled on macOS and Linux/WSL2 with bubblewrap (`pty.test.ts`). Checked on Windows with the real CLI (2026-11-05): `git push` and the `~/.ssh` read were refused, the bare remote did not move, and the normal goal-to-merge flow still worked. Native Windows has no Claude Code OS sandbox (docs, checked 2026-11-05), so there the rules are the only layer and the sidebar says so. Our own Windows sandbox (restricted token / AppContainer) is not built |
 | Dedicated merge worktree | VERIFIED | `git.test.ts`: merge and rollback while the user's tree is on another branch with uncommitted work; the branch moves by CAS ref update, or by fast-forward when a clean worktree has it checked out. Post-merge checks run on the merged commit in `<worktrees>/merge` |
-| Electron packaging, native notifications, installer | NOT IMPLEMENTED | IPC boundary designed in `architecture.md` |
+| Desktop shell (Electron) | PARTIAL | `npm run desktop`: Electron 45 window over the same local server, started as a child Node process; sandboxed renderer, one preload call (add repository via folder picker, list kept in Electron userData). Run on Linux under Xvfb with a disposable repo: UI loads, bridge present, no `require` in the renderer, server stops when the window closes. Not yet: installer, window state, in-place project add (adding restarts the server) |
 | GitHub integration | NOT IMPLEMENTED | |
 | Agent profiles | IMPLEMENTED | Per project `~/.agent-office/<repo>/profile.json` with only `agent`, `model` and `branch` (allowlist, so no profile can add a permission-bypass flag; `pty.test.ts`). Shown in the sidebar. Run end to end with a stub `claude` (model passed through, merges onto `trunk`). The `--model` flags of codex and opencode are not yet checked against installed versions |
 | Dev-server preview, usage tracking | NOT IMPLEMENTED | Phase 5 |
@@ -43,5 +43,5 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 ## Next
 1. Own Windows OS isolation for agents (restricted token / AppContainer via a small native helper), since Claude Code has no native Windows sandbox. Until then, WSL2 is the sandboxed option on Windows.
 2. Interactive sessions (input, interrupt, resume where the CLI supports it) and the attention items they produce.
-3. Electron shell with the typed preload API.
+3. Desktop installer and in-place project add.
 4. Real runs with Codex and OpenCode.

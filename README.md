@@ -28,7 +28,7 @@ Every step is recorded in SQLite. Every automatic merge has a recoverable pre-me
 
 <p align="center"><img src="docs/screenshots/workspace.png" alt="Agent Office workspace: pipeline, sessions, task graph, live agent terminal and event log" width="900"></p>
 
-> **Status:** the core loop, the Manager, goal entry from the UI, an independent Claude Code reviewer and the workspace UI, several repositories in one window and a dedicated merge worktree work. Sandboxing and the Electron app are next. Feature-by-feature state: [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md).
+> **Status:** the core loop, the Manager, goal entry from the UI, an independent Claude Code reviewer and the workspace UI, several repositories in one window and a dedicated merge worktree work. A first desktop shell (Electron) runs the same UI; sandboxing is partial. Feature-by-feature state: [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md).
 
 ## Guarantees (enforced in code, not by prompting)
 
@@ -61,6 +61,7 @@ npm start -- path/to/repo --agent claude --branch main   # then open http://127.
 npm start -- path/to/api path/to/web                      # several repositories, one project each
 # per-project profile (outside the repo): ~/.agent-office/<repo>/profile.json
 #   {"agent": "codex", "model": "<model>", "branch": "master"}   only these three keys are accepted
+npm run desktop                                          # same thing in a desktop window; pick a repository on first run
 ```
 
 Run one task with a real agent CLI on a throwaway repo:
@@ -121,7 +122,8 @@ Full design, stack decisions and the Electron IPC boundary: [docs/architecture.m
 - [x] Multi-project workspace
 - [x] Side-by-side, syntax-highlighted diff with search, desktop notifications for attention items
 - [ ] Interactive sessions
-- [ ] Electron packaging (typed IPC), GitHub PR workflow
+- [x] Desktop shell (Electron window over the local server, folder picker for repositories)
+- [ ] Installer, GitHub PR workflow
 
 ## Known limits
 
