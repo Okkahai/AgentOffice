@@ -11,6 +11,7 @@ import { agentIsolation, buildAgentArgv, detectClis, parseProfile, type CliKind 
 import { CommandProvider, type AgentProvider } from '../src/agents/provider.ts';
 import { Orchestrator } from '../src/core/orchestrator.ts';
 import { Store } from '../src/core/store.ts';
+import { containerName, ensureWinSandbox, WinSandboxProvider } from '../src/agents/winSandbox.ts';
 import { GitService } from '../src/git/gitService.ts';
 import { ClaudePlanner } from '../src/manager/claudePlanner.ts';
 import { ClaudeReviewer } from '../src/manager/claudeReviewer.ts';
@@ -31,6 +32,9 @@ if (process.platform !== 'win32' || process.env.AO_PTY === '1') try {
   if (await mod.ptyWorks()) provider = new mod.PtyProvider();
   else console.warn('node-pty did not report a test process exit, using pipes');
 } catch (e) { console.warn('node-pty unavailable, using pipes:', (e as Error).message.split('\n')[0]); }
+// Windows: Claude Code engineers run in Agent Office's AppContainer when the helper builds. AO_WIN_SANDBOX=0 turns it off.
+const winSandbox = process.platform === 'win32' && process.env.AO_WIN_SANDBOX !== '0' ? ensureWinSandbox() : null;
+if (process.platform === 'win32') console.log(winSandbox ? `Windows sandbox: ${winSandbox}` : 'Windows sandbox: off (permission rules only)');
 
 /** One Orchestrator per repository: its own state.db, worktrees and merge lock. */
 async function openProject(repo: string): Promise<ProjectHandle & { dataDir: string }> {
@@ -48,7 +52,8 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   if (!(await git.tryResolve(`refs/heads/${branch}`))) throw new Error(`${repo} has no branch ${branch} (use --branch or profile.json)`);
   const orch = new Orchestrator({
     store: new Store(path.join(dataDir, 'state.db')), git,
-    provider, onAgentOutput: hub.push, targetBranch: branch, agentTimeoutMs: 30 * 60_000,
+    provider: winSandbox && kind === 'claude' ? new WinSandboxProvider(provider, winSandbox, containerName(path.basename(repo))) : provider,
+    onAgentOutput: hub.push, targetBranch: branch, agentTimeoutMs: 30 * 60_000,
     reviewer: clis.claude ? new ClaudeReviewer() : undefined,
   });
   await orch.recover();
@@ -65,7 +70,7 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   kick();
   const planner = clis.claude ? new ClaudePlanner(repo) : null;
   return {
-    orch, hub, dataDir, kick, profile: { agent: kind, model, isolation: agentIsolation(kind) },
+    orch, hub, dataDir, kick, profile: { agent: kind, model, isolation: agentIsolation(kind, process.platform, !!winSandbox) },
     onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => buildAgentArgv(kind, p, undefined, model)); kick(); } : undefined,
   };
 }

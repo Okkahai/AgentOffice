@@ -7,9 +7,9 @@ import path from 'node:path';
 
 export type CliKind = 'claude' | 'codex' | 'opencode';
 
-/** Which isolation layers an agent CLI gets on this machine, for the UI. Codex uses its own workspace-write sandbox. */
-export function agentIsolation(kind: CliKind, platform: string = process.platform): 'os-sandbox' | 'permission-rules' | 'none' {
-  if (kind === 'claude') return claudeOsSandbox(platform) ? 'os-sandbox' : 'permission-rules';
+/** Which isolation layers an agent CLI gets on this machine, for the UI. Codex uses its own workspace-write sandbox; `winSandbox` = Agent Office's AppContainer is in use. */
+export function agentIsolation(kind: CliKind, platform: string = process.platform, winSandbox = false): 'os-sandbox' | 'permission-rules' | 'none' {
+  if (kind === 'claude') return claudeOsSandbox(platform) || (platform === 'win32' && winSandbox) ? 'os-sandbox' : 'permission-rules';
   if (kind === 'codex') return 'os-sandbox'; // --full-auto = workspace-write sandbox (experimental on native Windows)
   return 'none';
 }
