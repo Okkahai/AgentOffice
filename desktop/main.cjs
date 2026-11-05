@@ -6,8 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
+app.setName('Agent Office'); // userData folder name; the default would be "Electron"
 const CONFIG = () => path.join(app.getPath('userData'), 'repositories.json');
-const readRepos = () => { try { return JSON.parse(fs.readFileSync(CONFIG(), 'utf8')).filter((r) => typeof r === 'string'); } catch { return []; } };
+// Repositories that were moved or deleted are dropped, or one stale entry would stop the app from starting.
+const readRepos = () => { try { return JSON.parse(fs.readFileSync(CONFIG(), 'utf8')).filter((r) => typeof r === 'string' && fs.existsSync(path.join(r, '.git'))); } catch { return []; } };
 const writeRepos = (repos) => fs.writeFileSync(CONFIG(), JSON.stringify(repos, null, 2));
 
 let server = null, win = null, origin = null;
