@@ -38,7 +38,7 @@ export interface ProjectHandle {
   /** Starts the project's runner after a retry re-queued tasks. */
   kick?: () => void;
   /** Which CLI (and model) engineers run as, shown in the UI. */
-  profile?: { agent: string; model?: string };
+  profile?: { agent: string; model?: string; isolation?: string };
 }
 
 export interface UiServerOptions extends Partial<ProjectHandle> {

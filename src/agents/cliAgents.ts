@@ -7,6 +7,13 @@ import path from 'node:path';
 
 export type CliKind = 'claude' | 'codex' | 'opencode';
 
+/** Which isolation layers an agent CLI gets on this machine, for the UI. Codex uses its own workspace-write sandbox. */
+export function agentIsolation(kind: CliKind, platform: string = process.platform): 'os-sandbox' | 'permission-rules' | 'none' {
+  if (kind === 'claude') return claudeOsSandbox(platform) ? 'os-sandbox' : 'permission-rules';
+  if (kind === 'codex') return 'os-sandbox'; // --full-auto = workspace-write sandbox (experimental on native Windows)
+  return 'none';
+}
+
 export interface CliSpec {
   kind: CliKind;
   bin: string;
@@ -14,10 +21,36 @@ export interface CliSpec {
   buildArgv(bin: string, prompt: string, model?: string): string[];
 }
 
+/**
+ * Claude Code engineers always run with these settings; there is no profile that removes them.
+ * Deny rules stop the usual forms of push, network and secret reads (Claude Code enforces them, the model can't
+ * override them), and bypass mode is disabled. They match command text, so they are not a boundary on their own:
+ * where Claude Code's OS sandbox exists (macOS; Linux/WSL2 with bubblewrap) it is enabled with no unsandboxed escape.
+ * Native Windows has no Claude Code sandbox, so there the rules are the only layer and the UI says so.
+ */
+export function claudeAgentSettings(osSandbox: boolean): Record<string, unknown> {
+  return {
+    permissions: {
+      deny: [
+        'Bash(git push *)', 'Bash(git remote *)', 'Bash(git config *)', 'Bash(curl *)', 'Bash(wget *)', 'Bash(ssh *)', 'Bash(scp *)',
+        'WebFetch', 'WebSearch', 'Read(~/.ssh/**)', 'Read(~/.aws/**)', 'Read(~/.config/gh/**)', 'Read(//**/.env)',
+      ],
+      disableBypassPermissionsMode: 'disable',
+    },
+    ...(osSandbox ? { sandbox: { enabled: true, allowUnsandboxedCommands: false } } : {}),
+  };
+}
+
+/** Whether Claude Code's OS sandbox can run here: macOS, or Linux (incl. WSL2) with bubblewrap installed. */
+export function claudeOsSandbox(platform: string = process.platform, pathVar?: string): boolean {
+  return platform === 'darwin' || (platform === 'linux' && !!findOnPath('bwrap', pathVar));
+}
+
 export const CLI_SPECS: Record<CliKind, CliSpec> = {
   claude: {
     kind: 'claude', bin: 'claude',
-    buildArgv: (bin, prompt, model) => [bin, '-p', prompt, '--permission-mode', 'acceptEdits', ...(model ? ['--model', model] : [])],
+    buildArgv: (bin, prompt, model) => [bin, '-p', prompt, '--permission-mode', 'acceptEdits',
+      '--settings', JSON.stringify(claudeAgentSettings(claudeOsSandbox())), ...(model ? ['--model', model] : [])],
   },
   codex: {
     kind: 'codex', bin: 'codex',

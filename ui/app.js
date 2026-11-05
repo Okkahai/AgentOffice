@@ -96,7 +96,12 @@ function renderTop() {
 
 function renderNav() {
   const list = app.data.projects ?? [];
-  const who = (pr) => (pr ? ` · ${esc(pr.agent)}${pr.model ? ` ${esc(pr.model)}` : ''}` : '');
+  const ISO = { 'os-sandbox': ['sandboxed', ''], 'permission-rules': ['rules only, no OS sandbox', 'warn'], none: ['no isolation', 'err'] };
+  const who = (pr) => {
+    if (!pr) return '';
+    const [label, tone] = ISO[pr.isolation] ?? ['', ''];
+    return ` · ${esc(pr.agent)}${pr.model ? ` ${esc(pr.model)}` : ''}${label ? `<span class="iso ${tone}" title="How agent processes are isolated on this machine">${esc(label)}</span>` : ''}`;
+  };
   $('#project').innerHTML = list.length > 1
     ? list.map((p) => `<a class="proj ${p.id === app.data.project ? 'on' : ''}" href="?project=${encodeURIComponent(p.id)}" title="${esc(p.repo)} → ${esc(p.targetBranch)}">${esc(p.repo)}${p.attention ? `<span class="count">${p.attention}</span>` : ''}<span class="dim">target ${esc(p.targetBranch)}${who(p.profile)}</span></a>`).join('')
     : `${esc(app.data.repo)}<span class="dim">target ${esc(app.data.targetBranch)}${who(app.data.profile)}</span>`;

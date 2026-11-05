@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { buildAgentArgv, detectClis, parseProfile, resolveShim } from '../src/agents/cliAgents.ts';
+import { agentIsolation, buildAgentArgv, claudeAgentSettings, claudeOsSandbox, detectClis, parseProfile, resolveShim } from '../src/agents/cliAgents.ts';
 import { FAKE_AGENT } from './helpers.ts';
 
 const node = process.execPath;
@@ -91,6 +91,26 @@ describe('Windows npm shims', () => {
       assert.throws(() => resolveShim([odd], 'win32'), /without a shell/);
       assert.deepEqual(resolveShim([js, 'x'], 'linux'), [js, 'x'], 'only Windows is affected');
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('agent hardening', () => {
+  it('always gives Claude Code engineers deny rules and no bypass mode; OS sandbox only where it exists', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ao-bin-'));
+    try {
+      writeFileSync(path.join(dir, 'claude'), '#!/bin/sh\n'); chmodSync(path.join(dir, 'claude'), 0o755);
+      const argv = buildAgentArgv('claude', 'do it', dir);
+      const settings = JSON.parse(argv[argv.indexOf('--settings') + 1]!);
+      assert.ok(settings.permissions.deny.includes('Bash(git push *)') && settings.permissions.deny.includes('WebFetch'));
+      assert.equal(settings.permissions.disableBypassPermissionsMode, 'disable');
+      assert.ok(!argv.some((a) => a.startsWith('--') && /bypass|dangerously/i.test(a)) && !argv.includes('bypassPermissions'), 'no bypass flag is ever built');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+    assert.equal(claudeAgentSettings(false).sandbox, undefined);
+    assert.deepEqual(claudeAgentSettings(true).sandbox, { enabled: true, allowUnsandboxedCommands: false });
+    assert.equal(claudeOsSandbox('win32'), false, 'native Windows has no Claude Code sandbox');
+    assert.equal(claudeOsSandbox('darwin'), true);
+    assert.equal(agentIsolation('claude', 'win32'), 'permission-rules');
+    assert.equal(agentIsolation('opencode', 'linux'), 'none');
   });
 });
 
