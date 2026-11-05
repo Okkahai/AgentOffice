@@ -27,7 +27,7 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Attention inbox | PARTIAL | Failures, conflicts, blocked tasks, failed post-merge checks, plan failures (`ui-model.test.ts`). Opt-in browser notifications for new items while the window is unfocused (enable from Ctrl+K), checked in Chromium with a refused merge. No permission or input requests yet (no provider reports them) |
 | Session states | PARTIAL | Running / exited / failed / timed out from real events. Retry of failed, conflicted or blocked tasks (re-queues tasks blocked on it, refused while a merge is still on the target) is in the inspector (`orchestrator.test.ts`, `server.test.ts`, checked in Chromium). Interrupt, resume and waiting-for-input are not exposed |
 | Multi-project workspace | VERIFIED | `npm start -- <repo> <repo> ...`: one Orchestrator per repository (own state.db, worktrees, merge lock), `?project=` on every API route, project switcher in the sidebar and Ctrl+K (`server.test.ts`). Run end to end on Linux with two disposable repos and a stub `claude`: both goals planned, 4 verified merges, the user's branch and uncommitted file in one repo untouched |
-| OS-level sandboxing, permission profiles | NOT IMPLEMENTED | Highest-priority safety gap before more unattended use |
+| OS-level sandboxing, permission profiles | PARTIAL | Claude Code engineers always run with deny rules (push, remote/config changes, curl/wget/ssh/scp, WebFetch/WebSearch, `~/.ssh`, `~/.aws`, `~/.config/gh`, `.env`) and bypass mode disabled; Claude Code's OS sandbox is enabled on macOS and Linux/WSL2 with bubblewrap (`pty.test.ts`). Checked on Windows with the real CLI (2026-11-05): `git push` and the `~/.ssh` read were refused, the bare remote did not move, and the normal goal-to-merge flow still worked. Native Windows has no Claude Code OS sandbox (docs, checked 2026-11-05), so there the rules are the only layer and the sidebar says so. Our own Windows sandbox (restricted token / AppContainer) is not built |
 | Dedicated merge worktree | VERIFIED | `git.test.ts`: merge and rollback while the user's tree is on another branch with uncommitted work; the branch moves by CAS ref update, or by fast-forward when a clean worktree has it checked out. Post-merge checks run on the merged commit in `<worktrees>/merge` |
 | Electron packaging, native notifications, installer | NOT IMPLEMENTED | IPC boundary designed in `architecture.md` |
 | GitHub integration | NOT IMPLEMENTED | |
@@ -36,12 +36,12 @@ Legend: **VERIFIED** = implemented and covered by tests or a recorded real run. 
 | Pixel-art office UI | REMOVED | Replaced by the workspace UI on 2026-11-04 |
 
 ## Known security limitations
-- Agents are not OS-sandboxed. They run as the user with a scrubbed environment (`*_API_KEY`, `*_TOKEN`, `*_SECRET`, `PASSWORD` removed). Unattended flags (`--permission-mode acceptEdits`, `--full-auto`) widen what an agent may do inside its worktree.
+- On native Windows, agents are not OS-sandboxed (Claude Code deny rules only; they match command text, so `sh -c` or a script can get around them). They run as the user with a scrubbed environment (`*_API_KEY`, `*_TOKEN`, `*_SECRET`, `PASSWORD` removed). Unattended flags (`--permission-mode acceptEdits`, `--full-auto`) widen what an agent may do inside its worktree.
 - The local server is loopback-only with a Host check and a per-run token for writes; any local process can still read state.
 - If the target branch is checked out somewhere, that tree must be clean and is fast-forwarded (or reset on rollback).
 
 ## Next
-1. OS-level sandboxing on Windows (restricted token / AppContainer evaluation) and permission profiles, before broader autonomy.
-2. Real end-to-end run from the UI: goal, `ClaudePlanner`, Claude Code engineers, `ClaudeReviewer`, on a disposable repo, on Windows.
-3. Interactive sessions (input, interrupt, resume where the CLI supports it) and the attention items they produce.
-4. Electron shell with the typed preload API.
+1. Own Windows OS isolation for agents (restricted token / AppContainer via a small native helper), since Claude Code has no native Windows sandbox. Until then, WSL2 is the sandboxed option on Windows.
+2. Interactive sessions (input, interrupt, resume where the CLI supports it) and the attention items they produce.
+3. Electron shell with the typed preload API.
+4. Real runs with Codex and OpenCode.

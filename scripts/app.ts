@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { buildAgentArgv, detectClis, parseProfile, type CliKind } from '../src/agents/cliAgents.ts';
+import { agentIsolation, buildAgentArgv, detectClis, parseProfile, type CliKind } from '../src/agents/cliAgents.ts';
 import { CommandProvider, type AgentProvider } from '../src/agents/provider.ts';
 import { Orchestrator } from '../src/core/orchestrator.ts';
 import { Store } from '../src/core/store.ts';
@@ -65,7 +65,7 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   kick();
   const planner = clis.claude ? new ClaudePlanner(repo) : null;
   return {
-    orch, hub, dataDir, kick, profile: { agent: kind, model },
+    orch, hub, dataDir, kick, profile: { agent: kind, model, isolation: agentIsolation(kind) },
     onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => buildAgentArgv(kind, p, undefined, model)); kick(); } : undefined,
   };
 }
@@ -79,4 +79,4 @@ catch (e) { console.error((e as Error).message); process.exit(1); }
 
 const srv = await startUiServer({ projects, uiDir: path.resolve(import.meta.dirname, '../ui'), port: Number(values.port) });
 console.log(`Agent Office: ${srv.url}`);
-for (const p of projects) console.log(`  ${p.orch.git.root} -> ${p.orch.targetBranch}, ${p.profile!.agent}${p.profile!.model ? ` (${p.profile!.model})` : ''}  (data: ${p.dataDir})`);
+for (const p of projects) console.log(`  ${p.orch.git.root} -> ${p.orch.targetBranch}, ${p.profile!.agent}${p.profile!.model ? ` (${p.profile!.model})` : ''}, isolation: ${p.profile!.isolation}  (data: ${p.dataDir})`);
