@@ -2,6 +2,7 @@
 //   npm start -- <repo-path> [<repo-path> ...] [--agent claude|codex|opencode] [--branch main] [--port 4174]
 // Each repository is its own project. State and worktrees live in ~/.agent-office/<repo-name>, outside the repository.
 // Optional ~/.agent-office/<repo-name>/profile.json overrides the flags for that project: {"agent":"codex","model":"...","branch":"master"}.
+// On Windows {"wsl":"<distro>"} runs Claude Code engineers inside that WSL2 distro under Claude Code's Linux sandbox.
 // It lives outside the repository on purpose, so an agent cannot rewrite its own profile.
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -11,6 +12,7 @@ import { agentIsolation, buildAgentArgv, detectClis, parseProfile, type CliKind 
 import { CommandProvider, type AgentProvider } from '../src/agents/provider.ts';
 import { Orchestrator } from '../src/core/orchestrator.ts';
 import { Store } from '../src/core/store.ts';
+import { wslClaudeArgv, WslProvider } from '../src/agents/wslAgent.ts';
 import { GitService } from '../src/git/gitService.ts';
 import { ClaudePlanner } from '../src/manager/claudePlanner.ts';
 import { ClaudeReviewer } from '../src/manager/claudeReviewer.ts';
@@ -41,14 +43,15 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   let profile;
   try { profile = parseProfile(existsSync(profileFile) ? JSON.parse(readFileSync(profileFile, 'utf8')) : undefined, defaults); }
   catch (e) { throw new Error(`${profileFile}: ${(e as Error).message}`); }
-  const { agent: kind, model } = profile, branch = profile.branch!;
-  if (!clis[kind]) throw new Error(`${repo}: ${kind} CLI not found on PATH`);
+  const { agent: kind, model, wsl } = profile, branch = profile.branch!;
+  if (wsl && process.platform !== 'win32') throw new Error(`${profileFile}: wsl is for Windows hosts`);
+  if (!wsl && !clis[kind]) throw new Error(`${repo}: ${kind} CLI not found on PATH`);
   const hub = new OutputHub();
   const git = new GitService({ repoRoot: repo, worktreesDir: path.join(dataDir, 'worktrees') });
   if (!(await git.tryResolve(`refs/heads/${branch}`))) throw new Error(`${repo} has no branch ${branch} (use --branch or profile.json)`);
   const orch = new Orchestrator({
     store: new Store(path.join(dataDir, 'state.db')), git,
-    provider, onAgentOutput: hub.push, targetBranch: branch, agentTimeoutMs: 30 * 60_000,
+    provider: wsl ? new WslProvider(provider, wsl) : provider, onAgentOutput: hub.push, targetBranch: branch, agentTimeoutMs: 30 * 60_000,
     reviewer: clis.claude ? new ClaudeReviewer() : undefined,
   });
   await orch.recover();
@@ -65,8 +68,8 @@ async function openProject(repo: string): Promise<ProjectHandle & { dataDir: str
   kick();
   const planner = clis.claude ? new ClaudePlanner(repo) : null;
   return {
-    orch, hub, dataDir, kick, profile: { agent: kind, model, isolation: agentIsolation(kind) },
-    onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => buildAgentArgv(kind, p, undefined, model)); kick(); } : undefined,
+    orch, hub, dataDir, kick, profile: { agent: kind, model, isolation: agentIsolation(kind, process.platform, !!wsl) },
+    onGoal: planner ? async (goal) => { await planAndApply(orch, planner, goal, (p) => (wsl ? wslClaudeArgv(p, model) : buildAgentArgv(kind, p, undefined, model))); kick(); } : undefined,
   };
 }
 

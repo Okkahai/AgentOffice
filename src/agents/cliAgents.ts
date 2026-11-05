@@ -7,9 +7,9 @@ import path from 'node:path';
 
 export type CliKind = 'claude' | 'codex' | 'opencode';
 
-/** Which isolation layers an agent CLI gets on this machine, for the UI. Codex uses its own workspace-write sandbox. */
-export function agentIsolation(kind: CliKind, platform: string = process.platform): 'os-sandbox' | 'permission-rules' | 'none' {
-  if (kind === 'claude') return claudeOsSandbox(platform) ? 'os-sandbox' : 'permission-rules';
+/** Which isolation layers an agent CLI gets on this machine, for the UI. Codex uses its own workspace-write sandbox; under WSL Claude Code's own Linux sandbox applies. */
+export function agentIsolation(kind: CliKind, platform: string = process.platform, wsl = false): 'os-sandbox' | 'permission-rules' | 'none' {
+  if (kind === 'claude') return wsl || claudeOsSandbox(platform) ? 'os-sandbox' : 'permission-rules';
   if (kind === 'codex') return 'os-sandbox'; // --full-auto = workspace-write sandbox (experimental on native Windows)
   return 'none';
 }
@@ -28,12 +28,12 @@ export interface CliSpec {
  * where Claude Code's OS sandbox exists (macOS; Linux/WSL2 with bubblewrap) it is enabled with no unsandboxed escape.
  * Native Windows has no Claude Code sandbox, so there the rules are the only layer and the UI says so.
  */
-export function claudeAgentSettings(osSandbox: boolean): Record<string, unknown> {
+export function claudeAgentSettings(osSandbox: boolean, extraDeny: string[] = []): Record<string, unknown> {
   return {
     permissions: {
       deny: [
         'Bash(git push *)', 'Bash(git remote *)', 'Bash(git config *)', 'Bash(curl *)', 'Bash(wget *)', 'Bash(ssh *)', 'Bash(scp *)',
-        'WebFetch', 'WebSearch', 'Read(~/.ssh/**)', 'Read(~/.aws/**)', 'Read(~/.config/gh/**)', 'Read(//**/.env)',
+        'WebFetch', 'WebSearch', 'Read(~/.ssh/**)', 'Read(~/.aws/**)', 'Read(~/.config/gh/**)', 'Read(//**/.env)', ...extraDeny,
       ],
       disableBypassPermissionsMode: 'disable',
     },
@@ -89,21 +89,24 @@ export function buildAgentArgv(kind: CliKind, prompt: string, pathVar?: string, 
  * Per-project agent profile. Deliberately an allowlist (CLI, model, target branch), not free-form flags:
  * no profile can add a permission-bypass or sandbox-disabling flag.
  */
-export interface AgentProfile { agent: CliKind; model?: string; branch?: string }
+export interface AgentProfile { agent: CliKind; model?: string; branch?: string; /** Windows: run Claude Code engineers in this WSL distro. */ wsl?: string }
 
 export function parseProfile(raw: unknown, defaults: AgentProfile): AgentProfile {
   if (raw == null) return defaults;
   if (typeof raw !== 'object' || Array.isArray(raw)) throw new Error('profile must be a JSON object');
   const o = raw as Record<string, unknown>;
-  const unknown = Object.keys(o).filter((k) => !['agent', 'model', 'branch'].includes(k));
-  if (unknown.length) throw new Error(`profile: unsupported keys ${unknown.join(', ')} (allowed: agent, model, branch)`);
+  const unknown = Object.keys(o).filter((k) => !['agent', 'model', 'branch', 'wsl'].includes(k));
+  if (unknown.length) throw new Error(`profile: unsupported keys ${unknown.join(', ')} (allowed: agent, model, branch, wsl)`);
   const agent = o.agent ?? defaults.agent;
   if (typeof agent !== 'string' || !(agent in CLI_SPECS)) throw new Error(`profile: agent must be one of ${Object.keys(CLI_SPECS).join(', ')}`);
   const model = o.model ?? defaults.model;
   if (model != null && (typeof model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/.test(model))) throw new Error('profile: model must be a plain model name');
   const branch = o.branch ?? defaults.branch;
   if (branch != null && (typeof branch !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(branch) || branch.includes('..'))) throw new Error('profile: branch must be a plain branch name');
-  return { agent: agent as CliKind, model: model as string | undefined, branch: branch as string | undefined };
+  const wsl = o.wsl ?? defaults.wsl;
+  if (wsl != null && (typeof wsl !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(wsl))) throw new Error('profile: wsl must be a WSL distro name');
+  if (wsl != null && agent !== 'claude') throw new Error('profile: wsl is only supported for the claude agent');
+  return { agent: agent as CliKind, model: model as string | undefined, branch: branch as string | undefined, ...(wsl ? { wsl: wsl as string } : {}) };
 }
 
 /**
