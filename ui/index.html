@@ -5,31 +5,71 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Office</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="/vendor/xterm.css">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header class="bar">
-  <div class="brand"><span class="logo" aria-hidden="true"></span>AGENT OFFICE</div>
-  <div class="meta" id="meta">connecting…</div>
-  <div class="live" id="live" title="event stream"><i></i><span>offline</span></div>
+<header class="top">
+  <button class="brand" data-cmd="toggle-nav" title="Toggle sidebar">&gt; agent-office</button>
+  <span class="crumb" id="crumb"></span>
+  <div class="facts" id="facts"></div>
+  <button class="palette-btn" data-cmd="palette" title="Command palette">Search or run a command <kbd>Ctrl K</kbd></button>
+  <span class="conn" id="conn">connecting</span>
 </header>
-<main class="layout">
-  <section class="stage" aria-label="Office">
-    <canvas id="office" width="960" height="540"></canvas>
-    <p class="hint">Work is driven by real events (desks, screens, forge, alarms). Idle strolling is just ambience.</p>
-  </section>
-  <section class="panel" aria-label="Details">
-    <nav class="tabs" role="tablist" id="tabs">
-      <button role="tab" data-tab="agents" aria-selected="true">Agents</button>
-      <button role="tab" data-tab="tasks">Tasks</button>
+
+<div class="body">
+  <nav class="nav" id="nav">
+    <div class="nav-label">project</div>
+    <div class="project" id="project"></div>
+    <div class="nav-label">workspace</div>
+    <button data-view="overview">Overview</button>
+    <button data-view="inbox">Inbox <span class="count" id="inbox-count"></span></button>
+    <button data-view="sessions">Sessions</button>
+    <button data-view="tasks">Tasks</button>
+    <button data-view="reviews">Reviews</button>
+    <button data-view="git">Git</button>
+    <button data-view="activity">Activity</button>
+  </nav>
+
+  <main class="main" id="main" tabindex="-1"></main>
+
+  <aside class="inspector" id="inspector" hidden>
+    <div class="resize-x" id="resize-inspector" title="Drag to resize"></div>
+    <div class="insp-head" id="insp-head"></div>
+    <div class="tabs" role="tablist" id="insp-tabs">
       <button role="tab" data-tab="terminal">Terminal</button>
-      <button role="tab" data-tab="events">Event log</button>
-      <button role="tab" data-tab="merges">Merges</button>
-      <button role="tab" data-tab="backups">Backups</button>
-    </nav>
-    <div class="view" id="view"></div>
-  </section>
-</main>
+      <button role="tab" data-tab="diff">Diff</button>
+      <button role="tab" data-tab="review">Review</button>
+      <button role="tab" data-tab="events">Events</button>
+    </div>
+    <div class="insp-body">
+      <div class="term-wrap" id="term-wrap"><div id="term"></div></div>
+      <div class="insp-pane" id="insp-pane"></div>
+    </div>
+  </aside>
+</div>
+
+<section class="activity" id="activity">
+  <div class="resize-y" id="resize-activity" title="Drag to resize"></div>
+  <div class="act-head">
+    <button class="act-toggle" data-cmd="toggle-activity">Activity</button>
+    <input id="act-filter" placeholder="Filter events" aria-label="Filter events">
+    <select id="act-sev" aria-label="Severity">
+      <option value="">all</option><option value="error">errors</option><option value="warn">warnings</option><option value="ok">success</option>
+    </select>
+    <span class="muted" id="act-count"></span>
+  </div>
+  <div class="act-list" id="act-list"></div>
+</section>
+
+<div class="palette" id="palette" hidden>
+  <div class="palette-box" role="dialog" aria-label="Command palette">
+    <input id="palette-input" placeholder="Type a command, task or view" autocomplete="off">
+    <div class="palette-list" id="palette-list" role="listbox"></div>
+  </div>
+</div>
+
+<script src="/vendor/xterm.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

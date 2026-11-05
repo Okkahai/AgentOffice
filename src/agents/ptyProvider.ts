@@ -1,12 +1,25 @@
 import * as pty from 'node-pty';
 import type { AgentExit, AgentHandle, AgentProvider, AgentStatus, SpawnRequest } from './provider.ts';
+import { resolveShim } from './cliAgents.ts';
 import { scrubbedEnv } from './provider.ts';
+
+/** True when a trivial process exits through the PTY in time. On some Windows ConPTY setups exit is never reported. */
+export async function ptyWorks(timeoutMs = 5000): Promise<boolean> {
+  try {
+    const h = new PtyProvider().spawn({ agentId: 'probe', argv: [process.execPath, '-e', '0'], cwd: process.cwd() });
+    let timer: NodeJS.Timeout | undefined;
+    const ok = await Promise.race([h.exited.then(() => true), new Promise<boolean>((r) => { timer = setTimeout(() => r(false), timeoutMs); })]);
+    clearTimeout(timer);
+    if (!ok) void h.terminate(100).catch(() => {});
+    return ok;
+  } catch { return false; }
+}
 
 /** Real PTY sessions (needed for interactive CLIs and xterm.js). Same contract as CommandProvider. */
 export class PtyProvider implements AgentProvider {
   readonly name = 'pty';
   spawn(req: SpawnRequest): AgentHandle {
-    const [cmd, ...args] = req.argv;
+    const [cmd, ...args] = resolveShim(req.argv);
     if (!cmd) throw new Error('empty argv');
     const term = pty.spawn(cmd, args, {
       name: 'xterm-256color', cols: 120, rows: 30, cwd: req.cwd, env: scrubbedEnv(process.env, req.env),

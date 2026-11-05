@@ -3,13 +3,13 @@
 
 export type EventType =
   | 'agent.spawned' | 'agent.coding' | 'agent.waiting' | 'agent.failed' | 'agent.completed'
-  | 'task.created' | 'task.assigned' | 'task.started' | 'task.blocked' | 'task.transition' | 'task.completed' | 'task.failed'
+  | 'task.created' | 'task.assigned' | 'task.started' | 'task.blocked' | 'task.retried' | 'task.transition' | 'task.completed' | 'task.failed'
   | 'git.worktree_created' | 'git.worktree_removed' | 'git.commit_created' | 'git.backup_created'
   | 'git.merge_started' | 'git.merge_completed' | 'git.merge_conflict' | 'git.rollback_completed' | 'git.op_denied'
   | 'verification.started' | 'verification.passed' | 'verification.failed'
   | 'review.started' | 'review.completed'
   | 'merge.success' | 'merge.verification_failed'
-  | 'plan.created'
+  | 'plan.started' | 'plan.created' | 'plan.failed'
   | 'message.sent' | 'system.recovered';
 
 export interface AgentOfficeEvent {

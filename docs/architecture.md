@@ -3,8 +3,8 @@
 Principle: **agents propose, deterministic software enforces.** Agents influence decomposition, code, analysis and review. They never control Git safety, backups, filesystem boundaries, protected operations or the audit trail.
 
 ```
-UI (Electron renderer, later)   -- read-only view + user intents
-  ↓ typed IPC (preload, allowlisted channels)
+UI (browser now, Electron later) -- views of real state + user intents   ui/*
+  ↓ local HTTP + SSE today (token-protected); typed IPC under Electron
 Event / State layer             -- EventBus + SQLite (events are the audit trail)
   ↓
 Orchestrator                    -- pipeline + scheduler + recovery        src/core/orchestrator.ts
@@ -18,7 +18,7 @@ Git control plane               -- worktrees, backup, merge, rollback     src/gi
 Repository / worktrees
 ```
 
-The UI never touches Git or the OS. Business logic never depends on animations: the office (later) is a subscriber of `EventBus`.
+The UI never touches Git or the OS. It is a subscriber of `EventBus` and a reader of persisted evidence.
 
 ## Stack decisions
 
@@ -28,7 +28,7 @@ The UI never touches Git or the OS. Business logic never depends on animations: 
 | DB | SQLite via built-in `node:sqlite` | No native addon to rebuild for Electron. Revisit (`better-sqlite3`) only if the experimental API becomes a problem |
 | Git | System `git` via `execFile` with argv arrays, no shell | Deterministic, auditable |
 | Agent processes | `AgentProvider` with two implementations: `CommandProvider` (pipes, used by the orchestrator tests) and `PtyProvider` (`node-pty`, for interactive terminals) | `node-pty` is native and needs an Electron rebuild when the shell lands |
-| UI (later) | Electron + React + PixiJS + xterm.js | As briefed; not started |
+| UI | Plain ES modules + xterm.js, served by the local server | No build step, one dependency. React was considered; the UI is a few views over JSON, so a framework and bundler add toolchain without removing code. Revisit if the component count grows. |
 
 No paid inference API is used anywhere. Agents are CLI processes (Claude Code, Codex, OpenCode) using the user's own logins; `scrubbedEnv` strips `*_API_KEY/_TOKEN/_SECRET/PASSWORD` from agent environments.
 
@@ -43,14 +43,14 @@ Exceptional: `BLOCKED` (dependency failed), `FAILED`, `CONFLICT`, `CANCELLED`. `
 2. **Agent** runs with cwd = worktree, timeout, process-group kill. After exit the main tree must still be clean (isolation-breach check).
 3. **Commit** in the worktree. Refuses empty commits and `.git/` / `.agent-office/` paths.
 4. **Verify** by running the repository's own checks (`lint`, `typecheck`, `test`, `build` scripts from `package.json`, only if present). Results stored per task/phase.
-5. **Independent review.** `Reviewer` returns `{approved, blockingIssues, warnings, summary}`. A deterministic reviewer always runs (empty diff, failed verification); an agent/QA reviewer is composed on top. Reviewer id must differ from the implementing agent.
+5. **Independent review.** `Reviewer` returns `{approved, blockingIssues, warnings, summary}`. A deterministic reviewer always runs (empty diff, failed verification); `ClaudeReviewer` (a separate Claude Code process in read-only plan mode that only sees the task, the verification result and the diff) is composed on top. Its output is parsed strictly: malformed output or any blocking issue means not approved. Reviewer id must differ from the implementing agent.
 6. **Merge gate** (re-derived from persisted evidence and live Git, not agent claims): verification passed, review approved, worktree HEAD == verified commit, target ref resolves, no conflict (`git merge-tree`).
 7. **Backup.** `refs/heads/backup/pre-merge-<UTC stamp>-task-<id>` created with an expect-not-exists `update-ref`, then re-read and compared to the target sha. Persisted (task, target branch+sha, source branch+sha, ref, time). Failure aborts the merge.
 8. **Merge** (`--no-ff`) in the main tree, serialized by a per-repo lock. Preconditions in `GitService.merge`: target checked out, clean tree, head == expected sha, backup ref == expected sha, source exists. Conflict → abort, `CONFLICT`.
 9. **Post-merge verification** on the merged tree. Success → `merge.success`, `COMPLETED`, worktree removed. Failure → `merge.verification_failed`, task `FAILED`; merged commit, backup, logs, review and diff are all kept.
 10. **Rollback** (`Orchestrator.rollback`) uses only persisted state: refuses unless the target still points at the merged commit, the tree is clean and the backup ref still equals the recorded sha; then `reset --hard <backup sha>`. Rollback is user-triggered, never silent.
 
-Known limitation: the merge happens in the user's main working tree, so it needs that tree clean and on the target branch. A dedicated merge worktree is a later option.
+The merge runs in a dedicated detached worktree at `<worktrees>/merge`, reset to the expected target commit each time (ignored files such as installed dependencies are kept). The target branch then moves from the expected sha to the merge commit: by `git merge --ff-only` in the worktree that has it checked out, which must be clean, or by a compare-and-swap `update-ref` when no worktree has it. Rollback moves it back the same way. Post-merge checks run on the merged commit in the merge worktree, so the user's own tree is never used for merging or verification.
 
 ## Protected operations
 
@@ -74,13 +74,19 @@ Typed `EventType` union in `events.ts` (a subset of the brief's list is implemen
 
 `src/manager/plan.ts`: the Manager (Claude Code in read-only plan mode, `ClaudePlanner`) proposes JSON. `validatePlan` is the deterministic gate: bounded task count (smallest useful team), unique kebab-case keys, known dependencies, no cycles. Only a validated plan reaches `Orchestrator.createTask`. An invalid proposal creates no tasks.
 
-## Office UI (implemented as a local web UI first)
+## Workspace UI (local web UI, Electron later)
 
-`src/server/server.ts` serves `ui/` and streams the persisted event trail plus live events over SSE. It binds `127.0.0.1`, rejects foreign `Host` headers (DNS rebinding), sends no CORS headers, and protects the only mutations (cancel task, roll back merge) with a per-run token. Actions call `Orchestrator` methods, so the UI cannot bypass the state machine.
+`src/server/server.ts` serves `ui/` and streams the persisted event trail plus live events and terminal output over SSE. It binds `127.0.0.1`, rejects foreign `Host` headers (DNS rebinding), sends no CORS headers, and protects every mutation with a per-run token: `POST /api/goal` (Manager), `POST /api/tasks/:id/cancel`, `POST /api/tasks/:id/rollback`. Read endpoints: `/api/state`, `/api/tasks/:id/detail` (verification runs, reviews, backups, merge, events), `/api/tasks/:id/diff` (live worktree diff while a task runs, otherwise the committed range via `GitService.diffCommits`). Actions call `Orchestrator` methods, so the UI cannot bypass the state machine.
 
-`ui/office-state.js` is a pure reducer from events to scene state (tested in Node). `ui/office.js` draws it on a canvas. Nothing animates without an event: engineers appear on `task.assigned`, type only between `agent.coding` and `agent.completed`, QA is busy while any test or review job is open, the server room lights come from backup/merge/verify events. Canvas 2D is used instead of PixiJS: the scene is a few hundred rectangles, so a rendering library adds a dependency without benefit; PixiJS can replace `office.js` without touching the reducer.
+Threat model of the local endpoint: any local process can read state (same as reading the SQLite file); writes need the token, which is only delivered to pages served from the bound origin. It is not safe to expose beyond loopback.
 
-Electron is deliberately last: it only wraps this UI (main process owns the orchestrator, preload exposes the fixed API below) and `node-pty` needs a native rebuild against Electron.
+`ui/model.js` holds the pure derivations (pipeline counts, agent process state from `agent.*` events, attention inbox, goal state, graph layout, event text), tested in Node. `ui/app.js` renders the views: Overview, Inbox, Sessions, Tasks (graph and table), Reviews, Git, Activity, the task inspector (terminal, diff, review, events) and the Ctrl+K command palette. Nothing is inferred beyond what events and stored rows say; an agent is RUNNING only between `agent.spawned` and its exit event. Visual rules: [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+
+Retry is an explicit user action (`POST /api/tasks/:id/retry`): a FAILED, CONFLICT or BLOCKED task and every task blocked on it go back to QUEUED and start in a fresh worktree. It is refused while the task's merge is still on the target branch; roll back first. A merge refused by a precondition is recorded as `aborted`.
+
+`scripts/app.ts` (`npm start -- <repo> [<repo> ...]`) runs Agent Office on real repositories. Each repository is a project with its own Orchestrator, store, worktrees, merge lock and runner; the server routes every API call by `?project=<id>` (first project by default) and the UI pins each tab to one project in its URL. Per repository: state and worktrees in `~/.agent-office/<repo-name>`, `recover()` at start, the selected CLI for engineers, `ClaudePlanner` for goals and `ClaudeReviewer` for independent review. One runner loop at a time; tasks from a goal entered while it runs start when one of the running tasks finishes (the loop re-reads the queue then).
+
+Electron is still last: it only wraps this UI (main process owns the orchestrator, preload exposes the fixed API below) and `node-pty` needs a native rebuild against Electron.
 
 ## Electron IPC boundary (design, not built)
 

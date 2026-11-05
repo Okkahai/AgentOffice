@@ -20,9 +20,12 @@
 
 ## Phases
 
-1. **Core loop (this slice, done):** Git control plane, state machine, SQLite, provider interface + command provider, verification, review gate, backup/merge/rollback, recovery, tests, demo.
-2. **Real agents and PTY:** (done: CLI detection, argv builders, PTY provider) remaining: wire providers into a real run and verify flags per installed CLI version, agent-backed reviewer, OS-level sandboxing of agent processes (cwd-jail / container), main-tree write prevention instead of detection.
-3. **Manager and task graph (done):** Manager proposes JSON, deterministic validator accepts, smallest-team limit. Remaining: project memory, goal input in the UI.
-4. **Office UI (done in browser):** tasks, terminal, event log, merges, backups, rollback and cancel. Remaining: diff and reviews views, agents inspector, settings (CLI detection), Electron packaging with typed IPC.
-5. **Visual office (done, v1):** canvas scene driven only by `EventBus` events. Remaining: richer states, sprites, sounds.
-6. **Later:** dedicated merge worktree, Ops mode, optional VPS coordinator.
+Current status per feature: [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md). Roadmap from the 2026-11 product brief:
+
+0. **Baseline and safety audit:** done (inventory in DEVELOPMENT_PROGRESS.md, competitor notes in COMPETITIVE_ANALYSIS.md).
+1. **Professional interface foundation:** done. Pixel office removed; black terminal design system; shell, navigation, overview, inspector, activity panel, command palette on real data.
+2. **Core workflow:** goal entry, task graph and real-repo launcher done. Multi-project done. Remaining: interactive sessions, persisted terminal history. Desktop notifications: done.
+3. **Review and safety:** agent-backed reviewer and diff viewer started. Remaining: review comments and feedback to agents. Diff: side-by-side, search and syntax highlighting done, OS sandboxing and permission profiles. Dedicated merge worktree: done.
+4. **Desktop release:** Electron with typed preload, notifications, window state, Windows installer.
+5. **Developer experience:** GitHub issues and PRs, dev-server preview, agent profiles, usage tracking.
+6. **Later:** scheduled agents, remote workers, Ops mode. Not before the core is reliable.

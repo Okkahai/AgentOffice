@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { assertInside, assertSafeId, slugify } from './paths.ts';
 
@@ -84,6 +84,15 @@ export class GitService {
     return { root: top, branch, head, clean: state.clean, dirtyEntries: state.entries };
   }
 
+  /** Dirty entries of a tree, each with its file's mtime and size, so later edits to an already-dirty file show up too. */
+  async treeFingerprint(cwd = this.root): Promise<string[]> {
+    const { entries } = await this.verifyCleanState(cwd);
+    return entries.map((e) => {
+      const st = statSync(path.join(cwd, e.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, '')), { throwIfNoEntry: false });
+      return `${e}|${st ? `${st.mtimeMs}:${st.size}` : 'gone'}`;
+    });
+  }
+
   async verifyCleanState(cwd = this.root): Promise<{ clean: boolean; entries: string[] }> {
     const out = (await this.run(['status', '--porcelain', '--untracked-files=all'], cwd)).stdout;
     const entries = out.split('\n').filter(Boolean);
@@ -128,6 +137,17 @@ export class GitService {
     return { files, patch, stat };
   }
 
+  /** Diff between two commits in the main repository (worktree may already be gone). Read-only. */
+  async diffCommits(baseSha: string, headSha: string): Promise<DiffInfo> {
+    for (const sha of [baseSha, headSha]) if (!/^[0-9a-f]{7,64}$/.test(sha)) throw new GitError(`Not a commit sha: ${sha}`, [], '', null);
+    const range = `${baseSha}..${headSha}`;
+    const files = (await this.run(['diff', '--name-status', range])).stdout.split('\n').filter(Boolean).map((l) => {
+      const [status, ...rest] = l.split('\t');
+      return { status: status!, path: rest.join('\t') };
+    });
+    return { files, patch: (await this.run(['diff', range])).stdout, stat: (await this.run(['diff', '--stat', range])).stdout };
+  }
+
   /** Stage everything in the task worktree and commit. Refuses empty commits and protected paths. */
   async commit(wtPath: string, message: string): Promise<string> {
     assertInside(this.worktreesDir, wtPath);
@@ -164,47 +184,89 @@ export class GitService {
     return r.code !== 0;
   }
 
+  /** Path of the worktree that has `branch` checked out (main tree or a linked worktree), or null. */
+  async checkedOutAt(branch: string): Promise<string | null> {
+    const out = (await this.run(['worktree', 'list', '--porcelain'])).stdout;
+    for (const block of out.split('\n\n')) {
+      const wt = /^worktree (.+)$/m.exec(block)?.[1];
+      if (wt && block.split('\n').includes(`branch refs/heads/${branch}`)) return wt;
+    }
+    return null;
+  }
+
+  /** Dedicated detached worktree for merges and post-merge checks, reset to exactly `sha`. Ignored files (deps) are kept. */
+  async prepareMergeWorktree(sha: string): Promise<string> {
+    const wt = path.join(this.worktreesDir, 'merge');
+    assertInside(this.worktreesDir, wt);
+    if (!existsSync(wt)) {
+      mkdirSync(this.worktreesDir, { recursive: true });
+      await this.run(['worktree', 'prune']);
+      await this.run(['worktree', 'add', '--detach', wt, sha]);
+    } else {
+      const top = (await this.run(['rev-parse', '--show-toplevel'], wt, true)).stdout.trim();
+      if (!top || path.resolve(top) !== path.resolve(wt)) throw new Error(`${wt} exists but is not a git worktree; refusing to use it`);
+      await this.run(['merge', '--abort'], wt, true);
+      await this.run(['checkout', '-q', '--detach', '-f', sha], wt);
+      await this.run(['reset', '-q', '--hard', sha], wt);
+      await this.run(['clean', '-fdq'], wt);
+    }
+    if ((await this.resolve('HEAD', wt)) !== sha) throw new Error('Merge worktree is not at the expected commit');
+    return wt;
+  }
+
   /**
-   * Merge `sourceSha` into the target branch checked out in the main tree. Deterministic preconditions:
-   * target is checked out, tree is clean, target head === expectedTargetSha, backup ref verified.
+   * Merge `sourceSha` into the target branch inside the dedicated merge worktree, then advance the branch:
+   * fast-forward the worktree that has it checked out (must be clean and at the expected head), or a
+   * compare-and-swap ref update when nothing has it checked out. The user's working tree is never merged into.
    */
   async merge(opts: {
     targetBranch: string; expectedTargetSha: string; sourceSha: string; backup: BackupInfo; message: string;
   }): Promise<{ status: 'merged'; mergedSha: string } | { status: 'conflict' }> {
-    const repo = await this.inspectRepository();
-    if (repo.branch !== opts.targetBranch) throw new Error(`Main tree is on ${repo.branch}, expected ${opts.targetBranch}`);
-    if (!repo.clean) throw new Error('Main working tree is not clean; refusing to merge');
-    if (repo.head !== opts.expectedTargetSha) {
-      throw new Error(`Target moved: expected ${opts.expectedTargetSha}, found ${repo.head}`);
-    }
+    const ref = `refs/heads/${opts.targetBranch}`;
+    const current = await this.tryResolve(ref);
+    if (current !== opts.expectedTargetSha) throw new Error(`Target moved: expected ${opts.expectedTargetSha}, found ${current}`);
     if (opts.backup.sha !== opts.expectedTargetSha || (await this.tryResolve(opts.backup.ref)) !== opts.expectedTargetSha) {
       throw new Error('Backup does not point at the expected target commit; refusing to merge');
+    }
+    const holder = await this.checkedOutAt(opts.targetBranch);
+    if (holder && !(await this.verifyCleanState(holder)).clean) {
+      throw new Error(`${holder} has ${opts.targetBranch} checked out and is not clean; refusing to merge`);
     }
     if (!(await this.tryResolve(opts.sourceSha))) throw new Error('Source commit does not exist');
     if (await this.hasConflicts(opts.expectedTargetSha, opts.sourceSha)) return { status: 'conflict' };
 
-    const r = await this.run(['merge', '--no-ff', '-m', opts.message, opts.sourceSha], this.root, true);
+    const mwt = await this.prepareMergeWorktree(opts.expectedTargetSha);
+    const r = await this.run(['merge', '--no-ff', '-m', opts.message, opts.sourceSha], mwt, true);
     if (r.code !== 0) {
-      await this.run(['merge', '--abort'], this.root, true);
+      await this.run(['merge', '--abort'], mwt, true);
       return { status: 'conflict' };
     }
-    const mergedSha = await this.resolve('HEAD');
-    const firstParent = await this.tryResolve('HEAD^1');
-    if (firstParent !== opts.expectedTargetSha) throw new Error('Unexpected merge result (first parent mismatch)');
+    const mergedSha = await this.resolve('HEAD', mwt);
+    if ((await this.tryResolve('HEAD^1', mwt)) !== opts.expectedTargetSha) throw new Error('Unexpected merge result (first parent mismatch)');
+    await this.#moveBranch(opts.targetBranch, opts.expectedTargetSha, mergedSha, 'merge');
     return { status: 'merged', mergedSha };
+  }
+
+  /** Move `branch` from `from` to `to`: in the worktree that has it checked out, or by CAS ref update. */
+  async #moveBranch(branch: string, from: string, to: string, what: 'merge' | 'rollback') {
+    const holder = await this.checkedOutAt(branch);
+    if (holder) {
+      if (!(await this.verifyCleanState(holder)).clean) throw new Error(`${holder} is not clean; refusing to ${what}`);
+      if ((await this.resolve('HEAD', holder)) !== from) throw new Error(`Target moved in ${holder}; refusing to ${what}`);
+      if (what === 'merge') await this.run(['merge', '-q', '--ff-only', to], holder);
+      else await this.run(['reset', '-q', '--hard', to], holder);
+    } else {
+      await this.run(['update-ref', `refs/heads/${branch}`, to, from]);
+    }
+    if ((await this.tryResolve(`refs/heads/${branch}`)) !== to) throw new Error(`${what} verification failed: ${branch} is not at ${to}`);
   }
 
   /** Restore the target branch to the recorded pre-merge commit. Only valid while it still points at the merge. */
   async rollback(opts: { targetBranch: string; mergedSha: string; restoreSha: string; backupRef: string }): Promise<void> {
-    const repo = await this.inspectRepository();
-    if (repo.branch !== opts.targetBranch) throw new Error(`Main tree is on ${repo.branch}, expected ${opts.targetBranch}`);
-    if (!repo.clean) throw new Error('Main working tree is not clean; refusing to roll back');
-    if (repo.head !== opts.mergedSha) {
-      throw new Error(`Target has moved since the merge (head ${repo.head}); refusing automatic rollback`);
-    }
+    const head = await this.tryResolve(`refs/heads/${opts.targetBranch}`);
+    if (head !== opts.mergedSha) throw new Error(`Target has moved since the merge (head ${head}); refusing automatic rollback`);
     if ((await this.tryResolve(opts.backupRef)) !== opts.restoreSha) throw new Error('Backup ref missing or changed; refusing rollback');
-    await this.run(['reset', '--hard', opts.restoreSha]);
-    if ((await this.resolve('HEAD')) !== opts.restoreSha) throw new Error('Rollback verification failed');
+    await this.#moveBranch(opts.targetBranch, opts.mergedSha, opts.restoreSha, 'rollback');
   }
 
   async containsCommit(branchOrSha: string, sha: string): Promise<boolean> {

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { resolveShim } from './cliAgents.ts';
 
 // Provider abstraction: the orchestrator only knows this interface. Provider-specific argv
 // (claude / codex / opencode) lives in provider modules. A PTY-backed provider (node-pty) will
@@ -41,7 +42,7 @@ export function scrubbedEnv(base: NodeJS.ProcessEnv, extra: Record<string, strin
 export class CommandProvider implements AgentProvider {
   readonly name = 'command';
   spawn(req: SpawnRequest): AgentHandle {
-    const [cmd, ...args] = req.argv;
+    const [cmd, ...args] = resolveShim(req.argv);
     if (!cmd) throw new Error('empty argv');
     const child: ChildProcess = spawn(cmd, args, {
       cwd: req.cwd, env: scrubbedEnv(process.env, req.env), stdio: ['pipe', 'pipe', 'pipe'], shell: false, detached: true,

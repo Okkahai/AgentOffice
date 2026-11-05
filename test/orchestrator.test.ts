@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { Orchestrator } from '../src/core/orchestrator.ts';
@@ -79,6 +79,22 @@ describe('core loop', () => {
     assert.equal(h.store.getTask(b.id)!.status, 'BLOCKED');
     assert.equal(existsSync(path.join(sb.repo, 'x.txt')), false);
   });
+
+  it('retry re-queues a failed task and the tasks blocked on it; merged tasks must be rolled back first', async () => {
+    const h = makeOrchestrator(sb);
+    const a = h.orch.createTask({ title: 'Flaky', spec: agentSpec({ exit: 3 }) });
+    const b = h.orch.createTask({ title: 'Needs A', dependsOn: [a.id], spec: agentSpec({ write: { 'x.txt': 'x' } }) });
+    await h.orch.runAll();
+    assert.throws(() => h.orch.retry(b.id + 10), /not failed/);
+    h.store.update(a.id, { spec: JSON.stringify(agentSpec({ write: { 'a.txt': 'a' } })) }); // the cause is fixed
+    assert.deepEqual(h.orch.retry(a.id), [a.id, b.id]);
+    assert.equal(h.store.getTask(b.id)!.status, 'QUEUED');
+    await h.orch.runAll();
+    assert.equal(h.store.getTask(a.id)!.status, 'COMPLETED');
+    assert.equal(h.store.getTask(b.id)!.status, 'COMPLETED');
+    assert.ok(existsSync(path.join(sb.repo, 'x.txt')));
+    assert.throws(() => h.orch.retry(a.id), /not failed/);
+  });
 });
 
 describe('safety gates', () => {
@@ -133,6 +149,21 @@ describe('safety gates', () => {
     assert.match(h.store.getTask(t.id)!.failure_reason!, /Isolation breach/);
     assert.equal(mainSha(), before);
   });
+  it('pre-existing uncommitted work in the main tree is not a breach, but an agent touching it is', async () => {
+    const h = makeOrchestrator(sb, { maxParallel: 1 }); // sequential, so one agent's escape is not blamed on the other
+    // The user works on their own branch; merges into main happen in the merge worktree.
+    git(sb.repo, 'checkout', '-qb', 'user-feature');
+    const wip = path.join(sb.repo, 'user-wip.txt');
+    writeFileSync(wip, 'mine');
+    try {
+      const ok = h.orch.createTask({ title: 'Polite', spec: agentSpec({ write: { 'polite.txt': 'x' } }) });
+      const bad = h.orch.createTask({ title: 'Clobber', spec: agentSpec({ write: { [wip]: 'agent was here, longer' } }) });
+      await h.orch.runAll();
+      assert.equal(h.store.getTask(ok.id)!.status, 'COMPLETED', h.store.getTask(ok.id)!.failure_reason ?? '');
+      assert.match(h.store.getTask(bad.id)!.failure_reason!, /Isolation breach.*user-wip/);
+    } finally { rmSync(wip, { force: true }); git(sb.repo, 'checkout', '-q', 'main'); }
+  });
+
 
   it('kills an agent that exceeds its timeout', async () => {
     const h = makeOrchestrator(sb, { agentTimeoutMs: 300 });
@@ -184,10 +215,12 @@ describe('safety gates', () => {
     assert.ok(types(h, failed.id).includes('merge.verification_failed'));
     assert.equal(h.store.verifications(failed.id, 'post-merge')[0]!.passed, 0);
 
+    assert.throws(() => h.orch.retry(failed.id), /roll it back/);
     await h.orch.rollback(failed.id);
     const backup = h.store.backups(failed.id)[0]!;
     assert.equal(mainSha(), backup.target_sha, 'main restored to the recorded pre-merge commit');
     assert.equal(h.store.latestMerge(failed.id)!.status, 'rolled_back');
+    assert.deepEqual(h.orch.retry(failed.id), [failed.id], 'retry is allowed once the merge is rolled back');
     assert.ok(mainSha() !== before, 'the first task stays merged');
     assert.ok(types(h).includes('git.rollback_completed'));
     assert.equal(git(sb.repo, 'rev-parse', backup.ref.replace('refs/heads/', '')), backup.target_sha, 'backup retained');

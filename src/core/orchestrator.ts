@@ -109,6 +109,29 @@ export class Orchestrator {
     this.bus.emit('message.sent', { taskId: m.taskId, agentId: m.sender, payload: { to: m.recipient } });
   }
 
+  /**
+   * Explicit user retry of a FAILED, CONFLICT or BLOCKED task: back to QUEUED with a clean slate, plus every task
+   * BLOCKED on it. Refused while a merge of the task is still on the target (roll it back first).
+   */
+  retry(id: number): number[] {
+    const t = this.store.getTask(id);
+    if (!t || !['FAILED', 'CONFLICT', 'BLOCKED'].includes(t.status)) throw new Error(`Task ${id} is not failed, conflicted or blocked`);
+    const m = this.store.latestMerge(id);
+    if (m && ['success', 'verification_failed'].includes(m.status)) throw new Error(`Task ${id} is merged into ${this.targetBranch}; roll it back before retrying`);
+    const requeue = [id];
+    for (let i = 0; i < requeue.length; i++) {
+      for (const d of this.store.listTasks()) {
+        if (d.status === 'BLOCKED' && !requeue.includes(d.id) && this.store.deps(d.id).includes(requeue[i]!)) requeue.push(d.id);
+      }
+    }
+    for (const q of requeue) {
+      this.#cancelled.delete(q);
+      this.#move(q, 'QUEUED', { failure_reason: null, commit_sha: null, verification_status: 'pending', review_status: 'pending' });
+      this.#emit('task.retried', q, { requestedFor: id });
+    }
+    return requeue;
+  }
+
   /** Deterministic rollback from persisted state only. */
   async rollback(taskId: number): Promise<void> {
     const merge = this.store.latestMerge(taskId);
@@ -162,6 +185,8 @@ export class Orchestrator {
     this.#emit('task.assigned', id, { agentId }, agentId);
     this.#guard(id);
 
+    // Snapshot the user's tree so their own uncommitted work is not mistaken for an escape.
+    const mainBefore = new Set(await this.#mergeLock.run(() => this.git.treeFingerprint()));
     t = this.#move(id, 'WORKING');
     this.#emit('task.started', id, {}, agentId);
     const inv = (this.#cfg.launch ?? defaultLaunch)(t);
@@ -180,9 +205,10 @@ export class Orchestrator {
     if (exit.code !== 0) { this.#emit('agent.failed', id, { code: exit.code }, agentId); throw new Error(`Agent exited with code ${exit.code}`); }
     this.#emit('agent.completed', id, {}, agentId);
 
-    // The main tree is not the agent's workspace: any change there is an isolation breach.
-    const dirty = await this.#mergeLock.run(() => this.git.verifyCleanState());
-    if (!dirty.clean) throw new Error(`Isolation breach: main working tree modified (${dirty.entries.slice(0, 3).join(', ')})`);
+    // The main tree is not the agent's workspace: any change there during the run is an isolation breach.
+    // shortcut: user edits made in the main tree while an agent runs are flagged too; per-process attribution needs OS sandboxing.
+    const changed = (await this.#mergeLock.run(() => this.git.treeFingerprint())).filter((e) => !mainBefore.has(e));
+    if (changed.length) throw new Error(`Isolation breach: main working tree modified (${changed.slice(0, 3).map((e) => e.split('|')[0]).join(', ')})`);
 
     const sha = await this.git.commit(wt.path, `agent-office: task ${id}: ${t.title}`);
     this.store.update(id, { commit_sha: sha });
@@ -232,7 +258,10 @@ export class Orchestrator {
     const merge = this.store.createMerge(id, row.id);
     this.#emit('git.merge_started', id, { source: t.commit_sha, target: targetSha });
 
-    const res = await this.git.merge({ targetBranch: this.targetBranch, expectedTargetSha: targetSha, sourceSha: t.commit_sha!, backup, message: `Merge task ${id}: ${t.title}` });
+    let res;
+    try {
+      res = await this.git.merge({ targetBranch: this.targetBranch, expectedTargetSha: targetSha, sourceSha: t.commit_sha!, backup, message: `Merge task ${id}: ${t.title}` });
+    } catch (e) { this.store.updateMerge(merge.id, 'aborted'); throw e; } // a refused precondition leaves the target unchanged
     if (res.status === 'conflict') { this.store.updateMerge(merge.id, 'conflict'); return this.#conflict(id); }
     this.store.updateMerge(merge.id, 'merging', res.mergedSha);
     this.#emit('git.merge_completed', id, { mergedSha: res.mergedSha });
@@ -240,7 +269,8 @@ export class Orchestrator {
   }
 
   async #postMerge(id: number, mergeId: number, mergedSha: string) {
-    const ok = await this.#runChecks(id, 'post-merge', this.git.root);
+    // Checks run on exactly the merged commit in the dedicated merge worktree, never in the user's tree.
+    const ok = await this.#runChecks(id, 'post-merge', await this.git.prepareMergeWorktree(mergedSha));
     if (ok) {
       this.store.updateMerge(mergeId, 'success', mergedSha);
       this.#move(id, 'COMPLETED');
