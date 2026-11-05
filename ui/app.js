@@ -105,6 +105,7 @@ function renderNav() {
   $('#project').innerHTML = list.length > 1
     ? list.map((p) => `<a class="proj ${p.id === app.data.project ? 'on' : ''}" href="?project=${encodeURIComponent(p.id)}" title="${esc(p.repo)} → ${esc(p.targetBranch)}">${esc(p.repo)}${p.attention ? `<span class="count">${p.attention}</span>` : ''}<span class="dim">target ${esc(p.targetBranch)}${who(p.profile)}</span></a>`).join('')
     : `${esc(app.data.repo)}<span class="dim">target ${esc(app.data.targetBranch)}${who(app.data.profile)}</span>`;
+  if (window.agentOffice) $('#project').insertAdjacentHTML('beforeend', '<button class="add-repo" data-cmd="add-repo">+ Add repository</button>');
   for (const b of document.querySelectorAll('.nav button[data-view]')) b.classList.toggle('on', b.dataset.view === app.view);
 }
 
@@ -343,6 +344,7 @@ function commands() {
   const tasks = app.data.tasks.map((t) => ({ label: `Open task #${t.id} ${t.title}`, key: t.status.toLowerCase(), run: () => select(t.id) }));
   const extra = [
     { label: 'New goal', key: 'manager', run: () => { setView('overview'); setTimeout(() => $('#goal-input')?.focus(), 0); } },
+    ...(window.agentOffice ? [{ label: 'Add repository…', key: 'desktop', run: () => window.agentOffice.addRepository() }] : []),
     ...(typeof Notification !== 'undefined' && Notification.permission === 'default' ? [{ label: 'Enable desktop notifications', key: 'attention', run: () => Notification.requestPermission() }] : []),
     { label: 'Toggle activity panel', key: 'Alt+A', run: () => toggle('act-collapsed') },
     { label: 'Toggle sidebar', key: 'Alt+B', run: () => toggle('nav-collapsed') },
@@ -393,6 +395,7 @@ document.addEventListener('click', (e) => {
   const c = el.dataset.cmd;
   if (c === 'palette') openPalette();
   else if (c === 'toggle-nav') toggle('nav-collapsed');
+  else if (c === 'add-repo') window.agentOffice?.addRepository();
   else if (c === 'toggle-activity') toggle('act-collapsed');
   else if (c === 'close-inspector') { app.selected = null; app.detail = null; $('#inspector').hidden = true; renderMain(); }
 });

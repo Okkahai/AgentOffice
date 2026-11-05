@@ -86,9 +86,11 @@ Retry is an explicit user action (`POST /api/tasks/:id/retry`): a FAILED, CONFLI
 
 `scripts/app.ts` (`npm start -- <repo> [<repo> ...]`) runs Agent Office on real repositories. Each repository is a project with its own Orchestrator, store, worktrees, merge lock and runner; the server routes every API call by `?project=<id>` (first project by default) and the UI pins each tab to one project in its URL. Per repository: state and worktrees in `~/.agent-office/<repo-name>`, `recover()` at start, the selected CLI for engineers, `ClaudePlanner` for goals and `ClaudeReviewer` for independent review. One runner loop at a time; tasks from a goal entered while it runs start when one of the running tasks finishes (the loop re-reads the queue then).
 
-Electron is still last: it only wraps this UI (main process owns the orchestrator, preload exposes the fixed API below) and `node-pty` needs a native rebuild against Electron.
+## Desktop shell (Electron)
 
-## Electron IPC boundary (design, not built)
+`desktop/main.cjs` (`npm run desktop`) starts `scripts/app.ts --port 0` with the system Node and loads its URL in a window. The control plane deliberately stays outside Electron's Node: it needs `node:sqlite`, type stripping and a `node-pty` built for system Node, and the web UI and the desktop window then run identical code. The renderer is sandboxed (`contextIsolation`, `sandbox`, no `nodeIntegration`), cannot navigate away from the local origin (https links open in the default browser) and gets one preload call, `agentOffice.addRepository()`, which opens a folder picker in the main process. The renderer never supplies a path. Writes still go through the same token-protected HTTP API.
+
+## Electron IPC boundary (target design for when the main process owns the orchestrator)
 
 - Main process owns Orchestrator, Store, GitService, providers. Renderer has `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`.
 - Preload exposes a fixed typed API (`getState`, `subscribeEvents`, `createGoal`, `sendMessage`, `sendTerminalInput`, `interrupt`, `terminate`, `rollback`). No generic `invoke(channel)`, no fs/git/shell access.
