@@ -82,7 +82,11 @@ static class AoSandbox {
     var sid = new SecurityIdentifier(acSidString);
 
     foreach (var p in rw) Grant(p, sid, FileSystemRights.Modify | FileSystemRights.Synchronize);
-    foreach (var p in ro) Grant(p, sid, FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize);
+    foreach (var p in ro) {
+      // Folders like Program Files can't be re-ACLed by a standard user, but Windows already lets every app container read them.
+      try { Grant(p, sid, FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize); }
+      catch (UnauthorizedAccessException) { Console.Error.WriteLine("ao-sandbox: could not grant read on " + p + ", relying on its existing access"); }
+    }
 
     // Capabilities: internetClient only (outbound internet; no LAN servers, no loopback to the host's services).
     var caps = IntPtr.Zero; uint capCount = 0;
