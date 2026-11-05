@@ -62,6 +62,7 @@ npm start -- path/to/api path/to/web                      # several repositories
 # per-project profile (outside the repo): ~/.agent-office/<repo>/profile.json
 #   {"agent": "codex", "model": "<model>", "branch": "master"}   only these three keys are accepted
 npm run desktop                                          # same thing in a desktop window; pick a repository on first run
+#   if npm skipped install scripts and Electron has no binary: node node_modules/electron/install.js
 ```
 
 Run one task with a real agent CLI on a throwaway repo:
