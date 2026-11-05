@@ -1,6 +1,6 @@
 # Development progress
 
-Last updated 2026-11-04. Evidence: `npm test` 59/59 passing and `npm run typecheck` clean on Linux (Node 22.23). Windows (Node 24, 2026-11-04): typecheck clean, the suite passed except that the PTY probe hung and `claude.CMD` could not be spawned (`spawn EINVAL`); shims fixed since; the PTY tests and PTY sessions are now opt-in on Windows (`AO_PTY=1`) and agents use pipes there. On the Windows re-run of fd08b71, typecheck and the git, manager, orchestrator and provider suites passed; the end-to-end run is still pending.
+Last updated 2026-11-04. Evidence: `npm test` 59/59 passing and `npm run typecheck` clean on Linux (Node 22.23). Windows (Node 24, 2026-11-04): typecheck clean, the suite passed except that the PTY probe hung and `claude.CMD` could not be spawned (`spawn EINVAL`); shims fixed since; the PTY tests and PTY sessions are now opt-in on Windows (`AO_PTY=1`) and agents use pipes there. Windows run of e1ea247: `npm test` 56/56 passing (PTY tests not run), no hang. The real `claude` now starts (no more EINVAL); the end-to-end run stopped at the CLI's expired login, so a real Windows run is still pending.
 
 ## Feature inventory
 
